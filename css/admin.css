@@ -209,6 +209,31 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 
 .toolbar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
 .search { max-width: 360px; }
+.toolbar-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.idea-filter { width: auto; max-width: 280px; }
+
+/* ---------- ideias de presente (formulário) ---------- */
+.ideas-field { border: none; padding: 0; margin: 4px 0 16px; }
+.ideas-field legend { font-size: 0.85rem; font-weight: 500; color: var(--ink); padding: 0; margin-bottom: 4px; }
+.ideas-field > p { margin-bottom: 10px; }
+.idea-group + .idea-group { margin-top: 12px; }
+.idea-group-title { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
+.idea-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.idea-chip { position: relative; }
+.idea-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.idea-chip span {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+.idea-chip span:hover { border-color: var(--pine); }
+.idea-chip input:checked + span { background: var(--ink); border-color: var(--ink); color: #fff; }
+.idea-chip input:focus-visible + span { outline: 2px solid var(--pine); outline-offset: 2px; }
 
 .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .chip {
@@ -437,6 +462,8 @@ dialog::backdrop { background: rgba(24, 51, 40, 0.45); }
   .view-head { align-items: center; }
   .view-head h2 { font-size: 1.3rem; }
   .search { max-width: none; }
+  .toolbar-row .search { flex: 1 1 100%; }
+  .idea-filter { max-width: none; flex: 1; }
 
   /* linha do produto vira duas linhas: foto + nome em cima, preço e botões embaixo */
   .p-row {
