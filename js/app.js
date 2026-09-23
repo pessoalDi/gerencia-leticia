@@ -4,6 +4,43 @@
    ============================================================ */
 
 const BUCKET = "produtos";
+
+// Ideias de presente — os "id" precisam ser IGUAIS aos do site de vendas
+// (js/script.js → IDEAS). A faixa de preço é automática no site e não aparece aqui.
+const IDEIAS = [
+  { grupo: "Datas comemorativas", itens: [
+    ["dia-das-maes-pais", "Dia das Mães e dos Pais"],
+    ["namorados", "Namorados e aniversário de casal"],
+    ["professores", "Dia dos Professores"],
+    ["criancas", "Dia das Crianças"],
+    ["natal", "Natal e fim de ano"],
+    ["dia-da-mulher", "Dia da Mulher"]
+  ]},
+  { grupo: "Ocasiões e celebrações", itens: [
+    ["aniversario", "Aniversários"],
+    ["maternidade", "Maternidade e chá de bebê"],
+    ["religioso", "Batizado, comunhão e crisma"],
+    ["casamento", "Casamento e padrinhos"],
+    ["formatura", "Formaturas"],
+    ["casa-nova", "Boas-vindas e casa nova"]
+  ]},
+  { grupo: "Para quem vai receber", itens: [
+    ["para-ele", "Para ele"],
+    ["para-ela", "Para ela"],
+    ["amigos", "Amigos"],
+    ["casais", "Casais"],
+    ["avos", "Avós"],
+    ["pets", "Pets e donos de pet"],
+    ["trabalho", "Chefe, equipe e colegas"]
+  ]},
+  { grupo: "Por estilo do mimo", itens: [
+    ["cultura-pop", "Gamer e cultura pop"],
+    ["viagem", "Viagem e aventuras"],
+    ["papelaria", "Papelaria afetiva"],
+    ["corporativo", "Corporativo e eventos"]
+  ]}
+];
+const NOME_IDEIA = Object.fromEntries(IDEIAS.flatMap((g) => g.itens));
 const MAX_LADO_FOTO = 1200;   // px — maior lado da foto enviada
 const QUALIDADE_FOTO = 0.85;
 
@@ -11,6 +48,7 @@ const state = {
   produtos: [],
   categorias: [],
   filtro: "todos",
+  filtroIdeia: "",
   busca: "",
   editando: null,        // produto aberto no formulário (null = novo)
   fotoNova: null,        // Blob redimensionado aguardando envio
@@ -63,6 +101,7 @@ function mensagemErro(err) {
   const m = (err && (err.message || err.error_description)) || String(err);
   if (/row-level security|permission denied/i.test(m)) return "Sem permissão. Confira se seu e-mail está na tabela admins do Supabase.";
   if (/duplicate key/i.test(m)) return "Já existe um produto com esse código.";
+  if (/tags/i.test(m) && /column|schema cache/i.test(m)) return "Falta rodar o arquivo supabase/migracao-ideias.sql no SQL Editor do Supabase.";
   if (/Failed to fetch|NetworkError/i.test(m)) return "Sem conexão com o banco. Verifique a internet e tente de novo.";
   return m;
 }
@@ -79,11 +118,37 @@ function confirmar(texto, rotuloBotao = "Excluir") {
 }
 
 function mostrarTela(id) {
+  const carregando = $("#telaCarregando");
+  if (carregando) carregando.hidden = true;
+  if (carregando) carregando.style.display = "none";
   ["#telaConfig", "#telaLogin", "#telaApp"].forEach((t) => ($(t).hidden = t !== id));
+}
+
+function falhaAoIniciar(titulo, itens) {
+  if (window.__mostrarErroGerencia) window.__mostrarErroGerencia(titulo, itens);
+  else alert(titulo + "\n" + itens.join("\n"));
 }
 
 /* ---------------- início ---------------- */
 document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await iniciar();
+  } catch (err) {
+    console.error(err);
+    falhaAoIniciar("A Gerência não abriu", [esc(mensagemErro(err))]);
+  }
+});
+
+async function iniciar() {
+  if (!window.supabase || !window.supabase.createClient) {
+    falhaAoIniciar("A Gerência não abriu", ["A biblioteca do Supabase não carregou (cdn.jsdelivr.net). Teste em outra rede ou desative bloqueadores de anúncio."]);
+    return;
+  }
+  if (!window.Sortable) {
+    falhaAoIniciar("A Gerência não abriu", ["A biblioteca de arrastar e soltar não carregou (cdn.jsdelivr.net). Recarregue a página."]);
+    return;
+  }
+
   const cfg = window.CONFIG || {};
   if (!cfg.SUPABASE_URL || cfg.SUPABASE_URL.includes("SEU-PROJETO") || !cfg.SUPABASE_ANON_KEY || cfg.SUPABASE_ANON_KEY.includes("COLE-AQUI")) {
     mostrarTela("#telaConfig");
@@ -108,7 +173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   sb.auth.onAuthStateChange((evento) => {
     if (evento === "SIGNED_OUT") mostrarTela("#telaLogin");
   });
-});
+}
 
 /* ---------------- login ---------------- */
 function ligarLogin() {
@@ -195,6 +260,9 @@ function produtosVisiveis() {
     if (state.filtro === "ocultos" && p.ativo) return false;
     if (state.filtro !== "todos" && state.filtro !== "ocultos" && p.categoria !== state.filtro) return false;
     if (q && !(`${p.nome} ${p.id}`.toLowerCase().includes(q))) return false;
+    const tags = p.tags || [];
+    if (state.filtroIdeia === "__sem" && tags.length) return false;
+    if (state.filtroIdeia && state.filtroIdeia !== "__sem" && !tags.includes(state.filtroIdeia)) return false;
     return true;
   });
 }
@@ -214,6 +282,19 @@ function renderChips() {
     .join("");
 }
 
+function renderFiltroIdeia() {
+  const sel = $("#filtroIdeia");
+  const conta = (id) => state.produtos.filter((p) => (p.tags || []).includes(id)).length;
+  const semIdeia = state.produtos.filter((p) => !(p.tags || []).length).length;
+  sel.innerHTML =
+    `<option value="">Todas as ideias</option>
+     <option value="__sem">Sem ideia marcada (${semIdeia})</option>` +
+    IDEIAS.map((g) => `<optgroup label="${esc(g.grupo)}">${
+      g.itens.map(([id, nome]) => `<option value="${id}">${esc(nome)} (${conta(id)})</option>`).join("")
+    }</optgroup>`).join("");
+  sel.value = state.filtroIdeia;
+}
+
 const ICONE_OLHO = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const ICONE_OLHO_OFF = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7c1.9 0 3.5-.5 4.9-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>`;
 const ICONE_ESTRELA = (cheia) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="${cheia ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9L12 3Z"/></svg>`;
@@ -223,13 +304,14 @@ function linhaProduto(p) {
   const foto = p.imagem_url
     ? `<img src="${esc(p.imagem_url)}" alt="" loading="lazy">`
     : "sem foto";
+  const nIdeias = (p.tags || []).length;
   return `
   <li class="p-row${p.ativo ? "" : " is-off"}" data-id="${esc(p.id)}">
     <span class="grip" aria-hidden="true">⋮⋮</span>
     <div class="p-thumb">${foto}</div>
     <div class="p-info">
       <button type="button" class="p-name" data-acao="editar">${esc(p.nome)}</button>
-      <span class="p-meta">${esc(p.id)} · ${esc(nomeCategoria(p.categoria))}${p.ativo ? "" : " · fora do site"}</span>
+      <span class="p-meta">${esc(p.id)} · ${esc(nomeCategoria(p.categoria))}${nIdeias ? ` · ${nIdeias} ${nIdeias === 1 ? "ideia" : "ideias"}` : ""}${p.ativo ? "" : " · fora do site"}</span>
     </div>
     <label class="p-price">
       <input type="text" inputmode="decimal" value="${brlNumero(p.preco)}" data-acao="preco" aria-label="Preço de ${esc(p.nome)}">
@@ -244,6 +326,7 @@ function linhaProduto(p) {
 
 function renderProdutos() {
   renderChips();
+  renderFiltroIdeia();
   const lista = produtosVisiveis();
   const total = state.produtos.length;
   const noSite = state.produtos.filter((p) => p.ativo).length;
@@ -306,6 +389,11 @@ async function atualizarProduto(id, campos) {
 function ligarProdutos() {
   $("#busca").addEventListener("input", (e) => {
     state.busca = e.target.value;
+    renderProdutos();
+  });
+
+  $("#filtroIdeia").addEventListener("change", (e) => {
+    state.filtroIdeia = e.target.value;
     renderProdutos();
   });
 
@@ -460,6 +548,21 @@ function abrirProduto(p) {
   f.nome.value = p?.nome || "";
   f.descricao.value = p?.descricao || "";
   f.preco.value = p ? brlNumero(p.preco) : "";
+
+  // ideias já marcadas; num produto novo, já vem marcada a ideia do filtro ativo
+  const marcadas = new Set(p?.tags || (state.filtroIdeia && state.filtroIdeia !== "__sem" ? [state.filtroIdeia] : []));
+  $("#campoIdeias").innerHTML = IDEIAS.map((g) => `
+    <div class="idea-group">
+      <p class="idea-group-title">${esc(g.grupo)}</p>
+      <div class="idea-chips">
+        ${g.itens.map(([id, nome]) => `
+          <label class="idea-chip">
+            <input type="checkbox" name="ideia" value="${id}"${marcadas.has(id) ? " checked" : ""}>
+            <span>${esc(nome)}</span>
+          </label>`).join("")}
+      </div>
+    </div>`).join("");
+
   f.ativo.checked = p ? p.ativo : true;
   f.favorito.checked = p ? p.favorito : false;
   mostrarFoto(p?.imagem_url || null);
@@ -583,7 +686,8 @@ function ligarFormularioProduto() {
         preco,
         ativo: f.ativo.checked,
         favorito: f.favorito.checked,
-        imagem_url
+        imagem_url,
+        tags: $$('#campoIdeias input[name="ideia"]:checked').map((i) => i.value)
       };
 
       if (antigo) {
@@ -766,92 +870,3 @@ function ligarImportacao() {
     const url = $("#csvUrl").value.trim();
     const erro = $("#importErro");
     erro.textContent = "";
-    $("#importPrevia").innerHTML = "";
-    $("#btnImportar").disabled = true;
-    if (!url) return (erro.textContent = "Cole o link CSV da planilha.");
-
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`A planilha respondeu com erro ${resp.status}.`);
-      const texto = await resp.text();
-      const parsed = Papa.parse(texto, { header: true, skipEmptyLines: true, transformHeader: (h) => h.trim() });
-
-      const linhas = parsed.data.map((row, i) => {
-        const id = campo(row, "id", "COD PRODUTO", "Cod Produto").toUpperCase();
-        const nome = campo(row, "name", "NOME", "Nome");
-        const categoria = slug(campo(row, "category", "CATEGORIA", "Categoria"));
-        const preco = lerPreco(campo(row, "price", "PREÇO", "Preço"));
-        const fav = campo(row, "favorite", "FAVORITO", "Favorito").toUpperCase();
-        return {
-          id, nome, categoria,
-          descricao: campo(row, "desc", "DESCRIÇÃO", "Descrição"),
-          preco,
-          favorito: fav === "SIM" || fav === "TRUE",
-          imagem_url: urlImagemAbsoluta(campo(row, "photo", "IMAGEM", "Imagem")),
-          posicao: i + 1,
-          valido: !!(id && nome && !Number.isNaN(preco))
-        };
-      });
-
-      state.importacao = linhas.filter((l) => l.valido);
-      const invalidas = linhas.length - state.importacao.length;
-
-      $("#importPrevia").innerHTML = `
-        <p class="muted" style="margin-bottom:8px">${state.importacao.length} produto(s) prontos para importar${invalidas ? ` · ${invalidas} linha(s) ignorada(s) por falta de código, nome ou preço` : ""}.</p>
-        <table>
-          <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Preço</th><th>Queridinho</th><th>Foto</th></tr></thead>
-          <tbody>
-            ${linhas.map((l) => `
-              <tr class="${l.valido ? "" : "bad"}">
-                <td>${esc(l.id || "—")}</td>
-                <td>${esc(l.nome || "—")}</td>
-                <td>${esc(l.categoria || "—")}</td>
-                <td>${Number.isNaN(l.preco) ? "sem preço" : "R$ " + brlNumero(l.preco)}</td>
-                <td>${l.favorito ? "sim" : ""}</td>
-                <td>${l.imagem_url ? "sim" : ""}</td>
-              </tr>`).join("")}
-          </tbody>
-        </table>`;
-      $("#btnImportar").disabled = state.importacao.length === 0;
-      $("#btnImportar").textContent = `Importar ${state.importacao.length} produto(s)`;
-    } catch (err) {
-      erro.textContent = `Não foi possível ler a planilha: ${mensagemErro(err)}`;
-    }
-  });
-
-  $("#btnImportar").addEventListener("click", async () => {
-    const itens = state.importacao || [];
-    if (!itens.length) return;
-    const ok = await confirmar(`Importar ${itens.length} produto(s)? Produtos com o mesmo código serão atualizados com os dados da planilha.`, "Importar");
-    if (!ok) return;
-
-    const btn = $("#btnImportar");
-    btn.disabled = true;
-    btn.textContent = "Importando…";
-
-    try {
-      // cria categorias que existem na planilha mas não no banco
-      const existentes = new Set(state.categorias.map((c) => c.id));
-      let pos = Math.max(0, ...state.categorias.map((c) => c.posicao || 0));
-      const novas = [...new Set(itens.map((i) => i.categoria).filter((c) => c && !existentes.has(c)))]
-        .map((id) => ({ id, nome: id.charAt(0).toUpperCase() + id.slice(1).replace(/-/g, " "), posicao: ++pos }));
-      if (novas.length) {
-        const { error } = await sb.from("categorias").insert(novas);
-        if (error) throw error;
-      }
-
-      const registros = itens.map(({ valido, ...r }) => ({ ...r, categoria: r.categoria || null, ativo: true }));
-      const { error } = await sb.from("produtos").upsert(registros, { onConflict: "id" });
-      if (error) throw error;
-
-      await carregarTudo();
-      toast(`${registros.length} produto(s) importados`);
-      $$(".tab").find((t) => t.dataset.view === "produtos").click();
-    } catch (err) {
-      $("#importErro").textContent = mensagemErro(err);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = `Importar ${itens.length} produto(s)`;
-    }
-  });
-}
