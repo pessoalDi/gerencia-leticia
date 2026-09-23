@@ -870,3 +870,92 @@ function ligarImportacao() {
     const url = $("#csvUrl").value.trim();
     const erro = $("#importErro");
     erro.textContent = "";
+         $("#importPrevia").innerHTML = "";
+    $("#btnImportar").disabled = true;
+    if (!url) return (erro.textContent = "Cole o link CSV da planilha.");
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`A planilha respondeu com erro ${resp.status}.`);
+      const texto = await resp.text();
+      const parsed = Papa.parse(texto, { header: true, skipEmptyLines: true, transformHeader: (h) => h.trim() });
+
+      const linhas = parsed.data.map((row, i) => {
+        const id = campo(row, "id", "COD PRODUTO", "Cod Produto").toUpperCase();
+        const nome = campo(row, "name", "NOME", "Nome");
+        const categoria = slug(campo(row, "category", "CATEGORIA", "Categoria"));
+        const preco = lerPreco(campo(row, "price", "PREÇO", "Preço"));
+        const fav = campo(row, "favorite", "FAVORITO", "Favorito").toUpperCase();
+        return {
+          id, nome, categoria,
+          descricao: campo(row, "desc", "DESCRIÇÃO", "Descrição"),
+          preco,
+          favorito: fav === "SIM" || fav === "TRUE",
+          imagem_url: urlImagemAbsoluta(campo(row, "photo", "IMAGEM", "Imagem")),
+          posicao: i + 1,
+          valido: !!(id && nome && !Number.isNaN(preco))
+        };
+      });
+
+      state.importacao = linhas.filter((l) => l.valido);
+      const invalidas = linhas.length - state.importacao.length;
+
+      $("#importPrevia").innerHTML = `
+        <p class="muted" style="margin-bottom:8px">${state.importacao.length} produto(s) prontos para importar${invalidas ? ` · ${invalidas} linha(s) ignorada(s) por falta de código, nome ou preço` : ""}.</p>
+        <table>
+          <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Preço</th><th>Queridinho</th><th>Foto</th></tr></thead>
+          <tbody>
+            ${linhas.map((l) => `
+              <tr class="${l.valido ? "" : "bad"}">
+                <td>${esc(l.id || "—")}</td>
+                <td>${esc(l.nome || "—")}</td>
+                <td>${esc(l.categoria || "—")}</td>
+                <td>${Number.isNaN(l.preco) ? "sem preço" : "R$ " + brlNumero(l.preco)}</td>
+                <td>${l.favorito ? "sim" : ""}</td>
+                <td>${l.imagem_url ? "sim" : ""}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+      $("#btnImportar").disabled = state.importacao.length === 0;
+      $("#btnImportar").textContent = `Importar ${state.importacao.length} produto(s)`;
+    } catch (err) {
+      erro.textContent = `Não foi possível ler a planilha: ${mensagemErro(err)}`;
+    }
+  });
+
+  $("#btnImportar").addEventListener("click", async () => {
+    const itens = state.importacao || [];
+    if (!itens.length) return;
+    const ok = await confirmar(`Importar ${itens.length} produto(s)? Produtos com o mesmo código serão atualizados com os dados da planilha.`, "Importar");
+    if (!ok) return;
+
+    const btn = $("#btnImportar");
+    btn.disabled = true;
+    btn.textContent = "Importando…";
+
+    try {
+      // cria categorias que existem na planilha mas não no banco
+      const existentes = new Set(state.categorias.map((c) => c.id));
+      let pos = Math.max(0, ...state.categorias.map((c) => c.posicao || 0));
+      const novas = [...new Set(itens.map((i) => i.categoria).filter((c) => c && !existentes.has(c)))]
+        .map((id) => ({ id, nome: id.charAt(0).toUpperCase() + id.slice(1).replace(/-/g, " "), posicao: ++pos }));
+      if (novas.length) {
+        const { error } = await sb.from("categorias").insert(novas);
+        if (error) throw error;
+      }
+
+      const registros = itens.map(({ valido, ...r }) => ({ ...r, categoria: r.categoria || null, ativo: true }));
+      const { error } = await sb.from("produtos").upsert(registros, { onConflict: "id" });
+      if (error) throw error;
+
+      await carregarTudo();
+      toast(`${registros.length} produto(s) importados`);
+      $$(".tab").find((t) => t.dataset.view === "produtos").click();
+    } catch (err) {
+      $("#importErro").textContent = mensagemErro(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = `Importar ${itens.length} produto(s)`;
+    }
+  });
+}
