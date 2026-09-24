@@ -374,6 +374,43 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .c-count { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
 .c-id { font-size: 0.78rem; color: var(--muted); }
 
+/* ---------- kits ---------- */
+.kit-pick {
+  list-style: none; margin: 8px 0 0; padding: 0;
+  max-height: 280px; overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.kit-pick li + li { border-top: 1px solid var(--line); }
+.kit-pick label {
+  display: grid;
+  grid-template-columns: 22px 40px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.kit-pick label:hover { background: var(--paper); }
+.kit-pick input { width: 18px; height: 18px; accent-color: var(--ink); }
+.kit-pick .kp-thumb {
+  width: 40px; height: 40px; border-radius: var(--r-sm);
+  background: var(--sage); overflow: hidden;
+}
+.kit-pick .kp-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.kit-pick .kp-name { font-size: 0.9rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kit-pick .kp-meta { display: block; font-size: 0.76rem; color: var(--muted); font-weight: 400; }
+.kit-pick .kp-price { font-size: 0.85rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.kit-pick li.is-picked label { background: #EEF6F0; }
+.kit-pick .kp-empty { padding: 14px; color: var(--muted); font-size: 0.88rem; }
+.kit-sum { margin: 8px 0 0; font-size: 0.88rem; color: var(--ink); }
+.kit-sum .ok { color: var(--ok); }
+
+.k-thumb-collage {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  width: 100%; height: 100%;
+}
+.k-thumb-collage img { width: 100%; height: 100%; object-fit: cover; }
+
 /* ---------- galeria ---------- */
 .gal-types-bar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .gal-types .chip { cursor: pointer; }

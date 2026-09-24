@@ -99,6 +99,7 @@
       <nav class="tabs" aria-label="Seções">
         <button class="tab active" data-view="produtos">Produtos</button>
         <button class="tab" data-view="categorias">Categorias</button>
+        <button class="tab" data-view="kits">Kits</button>
         <button class="tab" data-view="galeria">Galeria</button>
         <button class="tab" data-view="importar">Importar planilha</button>
       </nav>
@@ -153,6 +154,31 @@
       </form>
 
       <ul class="cat-list" id="listaCategorias"></ul>
+    </section>
+
+    <!-- ---------- KITS ---------- -->
+    <section class="view" id="viewKits" hidden>
+      <div class="view-head">
+        <div>
+          <h2>Kits</h2>
+          <p class="muted" id="resumoKits">Kits prontos que aparecem dentro de cada ideia de presente no site.</p>
+        </div>
+        <button class="btn btn-primary" id="btnNovoKit" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Novo kit
+        </button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-row">
+          <select id="filtroKitIdeia" class="idea-filter" aria-label="Filtrar kits por ideia"></select>
+        </div>
+      </div>
+
+      <p class="hint">Arraste pela alça <span class="grip-inline" aria-hidden="true">⋮⋮</span> para mudar a ordem. O preço salva ao sair do campo.</p>
+
+      <ul class="product-list" id="listaKits"></ul>
+      <div class="empty" id="vazioKits" hidden></div>
     </section>
 
     <!-- ---------- GALERIA ("Se inspire nessas ideias") ---------- -->
@@ -309,6 +335,78 @@
       <span class="spacer"></span>
       <button class="btn btn-ghost" value="cancel" formnovalidate>Cancelar</button>
       <button class="btn btn-primary" id="btnSalvarProduto" type="submit" value="default">Salvar produto</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- ===================== EDITAR KIT ===================== -->
+<dialog class="sheet" id="dlgKit" aria-labelledby="dlgKitTitulo">
+  <form method="dialog" class="sheet-form" id="formKit" novalidate>
+    <header class="sheet-head">
+      <h3 id="dlgKitTitulo">Novo kit</h3>
+      <button class="icon-btn" value="cancel" formnovalidate aria-label="Fechar">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+
+    <div class="sheet-body">
+      <div class="photo-field">
+        <div class="photo-box">
+          <img id="kitFotoPreview" alt="" hidden>
+          <span class="photo-empty" id="kitFotoVazia">Sem foto</span>
+        </div>
+        <div class="photo-actions">
+          <label class="btn btn-ghost">
+            <input type="file" id="kitFotoInput" accept="image/*" hidden>
+            Escolher foto do kit
+          </label>
+          <button class="btn btn-text danger" id="btnRemoverKitFoto" type="button" hidden>Remover foto</button>
+          <p class="muted small">Opcional. Sem foto, o site mostra as fotos dos produtos do kit.</p>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Nome do kit</span>
+        <input type="text" name="nome" placeholder="Ex.: Kit Mãe Coruja" required>
+      </label>
+
+      <label class="field">
+        <span>Descrição</span>
+        <textarea name="descricao" rows="2" placeholder="Ex.: Tudo personalizado com o nome dela, em caixa presente."></textarea>
+      </label>
+
+      <fieldset class="field ideas-field">
+        <legend>Produtos do kit</legend>
+        <input type="search" id="kitBuscaProduto" placeholder="Buscar produto por nome ou código" aria-label="Buscar produto para o kit">
+        <ul class="kit-pick" id="kitProdutos"><!-- gerado via JS --></ul>
+        <p class="kit-sum" id="kitSoma"></p>
+      </fieldset>
+
+      <div class="grid-2">
+        <label class="field">
+          <span>Preço do kit (R$)</span>
+          <input type="text" name="preco" inputmode="decimal" placeholder="0,00" required>
+        </label>
+        <div class="field">
+          <span>Exibição</span>
+          <label class="check"><input type="checkbox" name="ativo"> Aparece no site</label>
+        </div>
+      </div>
+
+      <fieldset class="field ideas-field">
+        <legend>Em quais ideias o kit aparece</legend>
+        <p class="muted small">As faixas de preço (até R$ 30, de R$ 30 a 70, acima de 70) são automáticas pelo preço do kit.</p>
+        <div id="kitIdeias"><!-- gerado via JS --></div>
+      </fieldset>
+
+      <p class="form-error" id="kitErro" role="alert"></p>
+    </div>
+
+    <footer class="sheet-foot">
+      <button class="btn btn-text danger" id="btnExcluirKit" type="button" hidden>Excluir kit</button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarKit" type="submit" value="default">Salvar kit</button>
     </footer>
   </form>
 </dialog>

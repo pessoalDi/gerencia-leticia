@@ -50,6 +50,12 @@ const state = {
   filtro: "todos",
   filtroIdeia: "",
   busca: "",
+  kits: [],              // kits prontos por ideia
+  kitsDisponivel: true,  // false se a migração de kits ainda não foi rodada
+  filtroKitIdeia: "",
+  kitEditando: null,
+  kitFotoNova: null,
+  kitRemoverFoto: false,
   galTipos: [],          // galeria: tipos (Caderno A5, A6...)
   galFotos: [],          // galeria: fotos de trabalhos feitos
   galTipoSel: null,      // tipo aberto na aba Galeria
@@ -64,6 +70,7 @@ let sb = null;
 let sortProdutos = null;
 let sortCategorias = null;
 let sortGalFotos = null;
+let sortKits = null;
 let sortGalTipos = null;
 
 /* ---------------- utilidades ---------------- */
@@ -172,6 +179,7 @@ async function iniciar() {
   ligarFormularioProduto();
   ligarCategorias();
   ligarGaleria();
+  ligarKits();
   ligarImportacao();
 
   const { data } = await sb.auth.getSession();
@@ -238,7 +246,14 @@ async function carregarTudo() {
   state.produtos = prods.data;
   renderProdutos();
   renderCategorias();
-  await carregarGaleria();
+  await Promise.all([carregarGaleria(), carregarKits()]);
+}
+
+async function carregarKits() {
+  const { data, error } = await sb.from("kits").select("*").order("posicao").order("criado_em");
+  state.kitsDisponivel = !error;
+  state.kits = error ? [] : data;
+  renderKits();
 }
 
 async function carregarGaleria() {
@@ -270,6 +285,7 @@ function ligarAbas() {
       $("#viewProdutos").hidden = v !== "produtos";
       $("#viewCategorias").hidden = v !== "categorias";
       $("#viewGaleria").hidden = v !== "galeria";
+      $("#viewKits").hidden = v !== "kits";
       $("#viewImportar").hidden = v !== "importar";
       window.scrollTo(0, 0);
     })
@@ -872,6 +888,381 @@ function ligarCategorias() {
       renderCategorias();
       renderChips();
       toast("Categoria excluída");
+    }
+  });
+}
+
+/* ============================================================
+   KITS — conjuntos de produtos por ideia de presente
+   ============================================================ */
+function htmlChipsIdeias(marcadas, nomeCampo) {
+  return IDEIAS.map((g) => `
+    <div class="idea-group">
+      <p class="idea-group-title">${esc(g.grupo)}</p>
+      <div class="idea-chips">
+        ${g.itens.map(([id, nome]) => `
+          <label class="idea-chip">
+            <input type="checkbox" name="${nomeCampo}" value="${id}"${marcadas.has(id) ? " checked" : ""}>
+            <span>${esc(nome)}</span>
+          </label>`).join("")}
+      </div>
+    </div>`).join("");
+}
+
+const produtoPorId = (id) => state.produtos.find((p) => p.id === id);
+
+function somaItens(ids) {
+  return ids.reduce((t, id) => t + Number(produtoPorId(id)?.preco || 0), 0);
+}
+
+function thumbKit(k) {
+  if (k.imagem_url) return `<img src="${esc(k.imagem_url)}" alt="" loading="lazy">`;
+  const fotos = (k.itens || []).map((id) => produtoPorId(id)?.imagem_url).filter(Boolean).slice(0, 4);
+  if (!fotos.length) return "sem foto";
+  if (fotos.length === 1) return `<img src="${esc(fotos[0])}" alt="" loading="lazy">`;
+  return `<div class="k-thumb-collage">${fotos.map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join("")}</div>`;
+}
+
+function renderFiltroKitIdeia() {
+  const sel = $("#filtroKitIdeia");
+  const conta = (id) => state.kits.filter((k) => (k.ideias || []).includes(id)).length;
+  sel.innerHTML = `<option value="">Todas as ideias (${state.kits.length})</option>` +
+    IDEIAS.map((g) => `<optgroup label="${esc(g.grupo)}">${
+      g.itens.map(([id, nome]) => `<option value="${id}">${esc(nome)} (${conta(id)})</option>`).join("")
+    }</optgroup>`).join("");
+  sel.value = state.filtroKitIdeia;
+}
+
+function renderKits() {
+  const lista = $("#listaKits");
+  const vazio = $("#vazioKits");
+  $("#btnNovoKit").disabled = !state.kitsDisponivel;
+
+  if (!state.kitsDisponivel) {
+    lista.hidden = true;
+    vazio.hidden = false;
+    vazio.innerHTML = `<p>Falta criar a tabela de kits: rode o arquivo <code>supabase/migracao-kits.sql</code> no SQL Editor do Supabase e recarregue a página.</p>`;
+    return;
+  }
+
+  renderFiltroKitIdeia();
+  const visiveis = state.kits.filter((k) => !state.filtroKitIdeia || (k.ideias || []).includes(state.filtroKitIdeia));
+  const noSite = state.kits.filter((k) => k.ativo).length;
+  $("#resumoKits").textContent = state.kits.length
+    ? `${state.kits.length} kit${state.kits.length > 1 ? "s" : ""} · ${noSite} no site · aparecem dentro de cada ideia de presente`
+    : "Kits prontos que aparecem dentro de cada ideia de presente no site.";
+
+  lista.hidden = visiveis.length === 0;
+  vazio.hidden = visiveis.length > 0;
+  if (!visiveis.length) {
+    vazio.innerHTML = state.kits.length
+      ? `<p>Nenhum kit nesta ideia ainda.</p><button class="btn btn-primary" type="button" data-acao="novo-kit">Montar um kit para esta ideia</button>`
+      : `<p>Nenhum kit cadastrado ainda.</p><button class="btn btn-primary" type="button" data-acao="novo-kit">Montar o primeiro kit</button>`;
+  }
+
+  lista.innerHTML = visiveis.map((k) => {
+    const nItens = (k.itens || []).length;
+    const nIdeias = (k.ideias || []).length;
+    return `
+    <li class="p-row${k.ativo ? "" : " is-off"}" data-id="${esc(k.id)}">
+      <span class="grip" aria-hidden="true">⋮⋮</span>
+      <div class="p-thumb">${thumbKit(k)}</div>
+      <div class="p-info">
+        <button type="button" class="p-name" data-acao="editar">${esc(k.nome)}</button>
+        <span class="p-meta">${nItens} ${nItens === 1 ? "produto" : "produtos"} · ${nIdeias ? `${nIdeias} ${nIdeias === 1 ? "ideia" : "ideias"}` : "nenhuma ideia marcada"}${k.ativo ? "" : " · fora do site"}</span>
+      </div>
+      <label class="p-price">
+        <input type="text" inputmode="decimal" value="${brlNumero(k.preco)}" data-acao="preco" aria-label="Preço de ${esc(k.nome)}">
+      </label>
+      <div class="p-toggles">
+        <button type="button" class="toggle t-ativo${k.ativo ? " on" : ""}" data-acao="ativo" aria-pressed="${k.ativo}" title="${k.ativo ? "Aparece no site — clique para esconder" : "Escondido — clique para mostrar no site"}">${k.ativo ? ICONE_OLHO : ICONE_OLHO_OFF}</button>
+      </div>
+      <button type="button" class="icon-btn p-edit" data-acao="editar" aria-label="Editar ${esc(k.nome)}">${ICONE_LAPIS}</button>
+    </li>`;
+  }).join("");
+
+  if (sortKits) sortKits.destroy();
+  sortKits = new Sortable(lista, {
+    handle: ".grip",
+    animation: 150,
+    ghostClass: "sortable-ghost",
+    chosenClass: "sortable-chosen",
+    onEnd: async (evt) => {
+      if (evt.oldIndex === evt.newIndex) return;
+      // mesma lógica dos produtos: com filtro, os visíveis trocam de lugar entre si
+      const nova = $$("#listaKits .p-row").map((li) => li.dataset.id);
+      const vis = new Set(nova);
+      const fila = [...nova];
+      const completa = state.kits.map((k) => (vis.has(k.id) ? fila.shift() : k.id));
+      const porId = Object.fromEntries(state.kits.map((k) => [k.id, k]));
+      state.kits = completa.map((id, i) => ({ ...porId[id], posicao: i + 1 }));
+      const { error } = await sb.rpc("reordenar_kits", { ids: completa });
+      if (error) { toast(mensagemErro(error), true); await carregarKits(); }
+      else toast("Ordem dos kits salva");
+    }
+  });
+}
+
+async function atualizarKit(id, campos) {
+  const { data, error } = await sb.from("kits").update(campos).eq("id", id).select().single();
+  if (error) throw error;
+  const i = state.kits.findIndex((k) => k.id === id);
+  if (i >= 0) state.kits[i] = data;
+  return data;
+}
+
+/* ---------- formulário do kit ---------- */
+function mostrarFotoKit(url) {
+  const img = $("#kitFotoPreview");
+  if (url) {
+    img.src = url;
+    img.hidden = false;
+    $("#kitFotoVazia").hidden = true;
+    $("#btnRemoverKitFoto").hidden = false;
+  } else {
+    img.removeAttribute("src");
+    img.hidden = true;
+    $("#kitFotoVazia").hidden = false;
+    $("#btnRemoverKitFoto").hidden = true;
+  }
+}
+
+function itensMarcadosKit() {
+  return $$('#kitProdutos input[name="kitItem"]:checked').map((i) => i.value);
+}
+
+let kitItensSelecionados = [];
+
+function renderEscolhaProdutos() {
+  const q = $("#kitBuscaProduto").value.trim().toLowerCase();
+  const sel = new Set(kitItensSelecionados);
+  // marcados primeiro, depois os demais na ordem do site
+  const lista = [
+    ...state.produtos.filter((p) => sel.has(p.id)),
+    ...state.produtos.filter((p) => !sel.has(p.id) && (!q || `${p.nome} ${p.id}`.toLowerCase().includes(q)))
+  ];
+  $("#kitProdutos").innerHTML = lista.length
+    ? lista.map((p) => `
+      <li class="${sel.has(p.id) ? "is-picked" : ""}">
+        <label>
+          <input type="checkbox" name="kitItem" value="${esc(p.id)}"${sel.has(p.id) ? " checked" : ""}>
+          <span class="kp-thumb">${p.imagem_url ? `<img src="${esc(p.imagem_url)}" alt="" loading="lazy">` : ""}</span>
+          <span class="kp-name">${esc(p.nome)}<span class="kp-meta">${esc(p.id)}${p.ativo ? "" : " · fora do site"}</span></span>
+          <span class="kp-price">R$ ${brlNumero(p.preco)}</span>
+        </label>
+      </li>`).join("")
+    : `<li class="kp-empty">Nenhum produto encontrado.</li>`;
+  atualizarSomaKit();
+}
+
+function atualizarSomaKit() {
+  const f = $("#formKit");
+  const n = kitItensSelecionados.length;
+  const soma = somaItens(kitItensSelecionados);
+  const preco = lerPreco(f.preco.value);
+  let txt = n ? `${n} ${n === 1 ? "produto" : "produtos"} · separados custariam R$ ${brlNumero(soma)}` : "Marque os produtos que vão no kit.";
+  if (n && !Number.isNaN(preco) && preco < soma) {
+    txt += ` · <span class="ok">economia de R$ ${brlNumero(soma - preco)} no kit</span>`;
+  }
+  $("#kitSoma").innerHTML = txt;
+}
+
+function abrirKit(k) {
+  const f = $("#formKit");
+  state.kitEditando = k;
+  state.kitFotoNova = null;
+  state.kitRemoverFoto = false;
+  $("#kitErro").textContent = "";
+  $("#kitFotoInput").value = "";
+  $("#kitBuscaProduto").value = "";
+  $("#dlgKitTitulo").textContent = k ? "Editar kit" : "Novo kit";
+  $("#btnExcluirKit").hidden = !k;
+  $("#btnSalvarKit").textContent = k ? "Salvar alterações" : "Criar kit";
+
+  f.nome.value = k?.nome || "";
+  f.descricao.value = k?.descricao || "";
+  f.preco.value = k ? brlNumero(k.preco) : "";
+  f.ativo.checked = k ? k.ativo : true;
+  kitItensSelecionados = [...(k?.itens || [])];
+  // num kit novo, já vem marcada a ideia do filtro ativo
+  const ideias = new Set(k?.ideias || (state.filtroKitIdeia ? [state.filtroKitIdeia] : []));
+  $("#kitIdeias").innerHTML = htmlChipsIdeias(ideias, "kitIdeia");
+  mostrarFotoKit(k?.imagem_url || null);
+  renderEscolhaProdutos();
+
+  $("#dlgKit").showModal();
+  if (!k) setTimeout(() => f.nome.focus(), 50);
+}
+
+function ligarKits() {
+  const dlg = $("#dlgKit");
+  const f = $("#formKit");
+
+  $("#btnNovoKit").addEventListener("click", () => abrirKit(null));
+  $("#vazioKits").addEventListener("click", (e) => {
+    if (e.target.closest("[data-acao=novo-kit]")) abrirKit(null);
+  });
+  $("#filtroKitIdeia").addEventListener("change", (e) => {
+    state.filtroKitIdeia = e.target.value;
+    renderKits();
+  });
+
+  // escolha dos produtos
+  $("#kitBuscaProduto").addEventListener("input", renderEscolhaProdutos);
+  $("#kitProdutos").addEventListener("change", (e) => {
+    if (e.target.name !== "kitItem") return;
+    const id = e.target.value;
+    if (e.target.checked) { if (!kitItensSelecionados.includes(id)) kitItensSelecionados.push(id); }
+    else kitItensSelecionados = kitItensSelecionados.filter((x) => x !== id);
+    e.target.closest("li").classList.toggle("is-picked", e.target.checked);
+    atualizarSomaKit();
+  });
+  f.preco.addEventListener("input", atualizarSomaKit);
+
+  // foto
+  $("#kitFotoInput").addEventListener("change", async (e) => {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+    try {
+      state.kitFotoNova = await redimensionar(arquivo);
+      state.kitRemoverFoto = false;
+      mostrarFotoKit(URL.createObjectURL(state.kitFotoNova));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+  $("#btnRemoverKitFoto").addEventListener("click", () => {
+    state.kitFotoNova = null;
+    state.kitRemoverFoto = true;
+    $("#kitFotoInput").value = "";
+    mostrarFotoKit(null);
+  });
+
+  // salvar
+  f.addEventListener("submit", async (e) => {
+    if (e.submitter && e.submitter.value === "cancel") return;
+    e.preventDefault();
+    const erro = $("#kitErro");
+    erro.textContent = "";
+    const nome = f.nome.value.trim();
+    const preco = lerPreco(f.preco.value);
+    if (!nome) return (erro.textContent = "Informe o nome do kit.");
+    if (!kitItensSelecionados.length) return (erro.textContent = "Marque pelo menos um produto do kit.");
+    if (Number.isNaN(preco)) return (erro.textContent = "Preço inválido. Use o formato 89,90.");
+
+    const btn = $("#btnSalvarKit");
+    const rotulo = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Salvando…";
+    try {
+      const antigo = state.kitEditando;
+      let imagem_url = antigo?.imagem_url || null;
+      if (state.kitFotoNova) {
+        const caminho = `kits/kit-${Date.now()}.jpg`;
+        const { error: upErr } = await sb.storage.from(BUCKET).upload(caminho, state.kitFotoNova, {
+          contentType: "image/jpeg", cacheControl: "31536000", upsert: false
+        });
+        if (upErr) throw upErr;
+        imagem_url = sb.storage.from(BUCKET).getPublicUrl(caminho).data.publicUrl;
+      } else if (state.kitRemoverFoto) {
+        imagem_url = null;
+      }
+
+      const campos = {
+        nome,
+        descricao: f.descricao.value.trim(),
+        preco,
+        ativo: f.ativo.checked,
+        imagem_url,
+        itens: [...kitItensSelecionados],
+        ideias: $$('#kitIdeias input[name="kitIdeia"]:checked').map((i) => i.value)
+      };
+
+      if (antigo) {
+        await atualizarKit(antigo.id, campos);
+        toast("Kit atualizado");
+      } else {
+        const posicao = Math.max(0, ...state.kits.map((k) => k.posicao || 0)) + 1;
+        const { data, error } = await sb.from("kits").insert({ ...campos, posicao }).select().single();
+        if (error) throw error;
+        state.kits.push(data);
+        toast(campos.ideias.length ? "Kit criado" : "Kit criado. Marque ao menos uma ideia para ele aparecer no site.");
+      }
+      if (antigo?.imagem_url && antigo.imagem_url !== imagem_url) {
+        apagarFotoDoStorage(antigo.imagem_url).catch(() => {});
+      }
+      dlg.close();
+      renderKits();
+    } catch (err) {
+      erro.textContent = mensagemErro(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = rotulo;
+    }
+  });
+
+  // excluir
+  $("#btnExcluirKit").addEventListener("click", async () => {
+    const k = state.kitEditando;
+    if (!k) return;
+    const ok = await confirmar(`Excluir o kit “${k.nome}”? Os produtos continuam cadastrados. Se quiser só tirar do site, use o botão de visibilidade.`);
+    if (!ok) return;
+    const { error } = await sb.from("kits").delete().eq("id", k.id);
+    if (error) return toast(mensagemErro(error), true);
+    apagarFotoDoStorage(k.imagem_url).catch(() => {});
+    state.kits = state.kits.filter((x) => x.id !== k.id);
+    dlg.close();
+    renderKits();
+    toast("Kit excluído");
+  });
+
+  // lista: editar, visibilidade e preço
+  const lista = $("#listaKits");
+  lista.addEventListener("click", async (e) => {
+    const alvo = e.target.closest("[data-acao]");
+    if (!alvo || alvo.dataset.acao === "preco") return;
+    const id = alvo.closest(".p-row").dataset.id;
+    const k = state.kits.find((x) => x.id === id);
+    if (!k) return;
+    if (alvo.dataset.acao === "editar") abrirKit(k);
+    if (alvo.dataset.acao === "ativo") {
+      try {
+        await atualizarKit(id, { ativo: !k.ativo });
+        renderKits();
+        toast(!k.ativo ? "Kit visível no site" : "Kit escondido do site");
+      } catch (err) {
+        toast(mensagemErro(err), true);
+      }
+    }
+  });
+  lista.addEventListener("keydown", (e) => {
+    if (e.target.dataset.acao === "preco" && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+  });
+  lista.addEventListener("focusout", async (e) => {
+    const input = e.target;
+    if (input.dataset.acao !== "preco") return;
+    const caixa = input.closest(".p-price");
+    const id = input.closest(".p-row").dataset.id;
+    const k = state.kits.find((x) => x.id === id);
+    const valor = lerPreco(input.value);
+    caixa.classList.remove("saved", "error");
+    if (Number.isNaN(valor)) {
+      caixa.classList.add("error");
+      toast("Preço inválido. Use o formato 89,90", true);
+      input.value = brlNumero(k.preco);
+      return;
+    }
+    if (valor === Number(k.preco)) { input.value = brlNumero(k.preco); return; }
+    try {
+      await atualizarKit(id, { preco: valor });
+      input.value = brlNumero(valor);
+      caixa.classList.add("saved");
+      setTimeout(() => caixa.classList.remove("saved"), 1400);
+      toast(`${k.nome}: R$ ${brlNumero(valor)}`);
+    } catch (err) {
+      caixa.classList.add("error");
+      input.value = brlNumero(k.preco);
+      toast(mensagemErro(err), true);
     }
   });
 }
