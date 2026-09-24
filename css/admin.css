@@ -374,6 +374,56 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .c-count { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
 .c-id { font-size: 0.78rem; color: var(--muted); }
 
+/* ---------- ofertas ---------- */
+.o-spacer::before { display: none; }
+.o-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: #96534A;
+}
+.icon-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.icon-opt { position: relative; }
+.icon-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.icon-opt span {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: #96534A;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.icon-opt span small { color: var(--muted); font-size: 0.7rem; }
+.icon-opt span:hover { border-color: var(--pine); }
+.icon-opt input:checked + span { border-color: var(--ink); background: #EEF6F0; box-shadow: 0 0 0 1px var(--ink) inset; }
+.icon-opt input:focus-visible + span { outline: 2px solid var(--pine); outline-offset: 2px; }
+
+.offer-preview-wrap { margin: 4px 0 12px; }
+.offer-preview-wrap .small { margin-bottom: 6px; }
+/* prévia com as cores do site de vendas */
+.offer-preview {
+  display: inline-grid;
+  grid-template-columns: 40px minmax(0, 1fr) 16px;
+  align-items: center; gap: 12px;
+  min-width: 240px; max-width: 100%;
+  padding: 16px 16px 16px 14px;
+  border: 1px solid #D9B79C;
+  border-radius: 18px;
+  background: #FBF3EC;
+}
+.offer-preview .pv-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid #E9CFC8; background: #FFFDFB; color: #96534A;
+}
+.offer-preview .pv-name { display: block; font-family: var(--font-display); font-size: 1.05rem; color: #4A342A; }
+.offer-preview .pv-detail { display: block; font-size: 0.78rem; color: #96534A; margin-top: 2px; }
+.offer-preview .pv-arrow { color: #D9B79C; }
+
 /* ---------- kits ---------- */
 .kit-pick {
   list-style: none; margin: 8px 0 0; padding: 0;
@@ -590,6 +640,7 @@ dialog::backdrop { background: rgba(24, 51, 40, 0.45); }
   .c-count { display: none; }
 
   .grid-2 { grid-template-columns: 1fr; }
+  #listaOfertas .o-icon { width: 48px; height: 48px; }
   .photo-field { gap: 14px; }
   .photo-box { width: 104px; }
 

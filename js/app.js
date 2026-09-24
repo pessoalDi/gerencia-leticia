@@ -52,6 +52,9 @@ const state = {
   busca: "",
   kits: [],              // kits prontos por ideia
   kitsDisponivel: true,  // false se a migração de kits ainda não foi rodada
+  ofertas: [],           // cards do topo do site
+  ofertasDisponivel: true,
+  ofertaEditando: null,
   filtroKitIdeia: "",
   kitEditando: null,
   kitFotoNova: null,
@@ -180,6 +183,7 @@ async function iniciar() {
   ligarCategorias();
   ligarGaleria();
   ligarKits();
+  ligarOfertas();
   ligarImportacao();
 
   const { data } = await sb.auth.getSession();
@@ -246,7 +250,7 @@ async function carregarTudo() {
   state.produtos = prods.data;
   renderProdutos();
   renderCategorias();
-  await Promise.all([carregarGaleria(), carregarKits()]);
+  await Promise.all([carregarGaleria(), carregarKits(), carregarOfertas()]);
 }
 
 async function carregarKits() {
@@ -286,6 +290,7 @@ function ligarAbas() {
       $("#viewCategorias").hidden = v !== "categorias";
       $("#viewGaleria").hidden = v !== "galeria";
       $("#viewKits").hidden = v !== "kits";
+      $("#viewOfertas").hidden = v !== "ofertas";
       $("#viewImportar").hidden = v !== "importar";
       window.scrollTo(0, 0);
     })
@@ -888,6 +893,248 @@ function ligarCategorias() {
       renderCategorias();
       renderChips();
       toast("Categoria excluída");
+    }
+  });
+}
+
+/* ============================================================
+   OFERTAS — cards do topo do site (Hero)
+   ============================================================ */
+// Mesmos ícones do site de vendas (js/script.js → OFFER_ICONS)
+const ICONES_OFERTA = [
+  ["presente", "Presente", '<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18M12 8v13"/><path d="M12 8c-2-3-6-4-6-1.5S10 8 12 8Zm0 0c2-3 6-4 6-1.5S14 8 12 8Z"/>'],
+  ["coracao", "Coração", '<path d="M12 20S4 15 4 9.5A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 8 1.9C20 15 12 20 12 20Z"/>'],
+  ["coracoes", "Corações", '<path d="M9 18s-6-3.6-6-7.6A3.2 3.2 0 0 1 9 9a3.2 3.2 0 0 1 6 1.4"/><path d="M15.5 20.5S11 18 11 15a2.5 2.5 0 0 1 4.5-1.5A2.5 2.5 0 0 1 20 15c0 3-4.5 5.5-4.5 5.5Z"/>'],
+  ["balao", "Balão", '<ellipse cx="12" cy="9.5" rx="6" ry="7"/><path d="M12 16.5v1.5M12 18c0 2-2 2-2 4"/><path d="M11 16.3h2"/>'],
+  ["brilho", "Brilho", '<path d="M12 3c.6 4.2 2.8 6.4 7 7-4.2.6-6.4 2.8-7 7-.6-4.2-2.8-6.4-7-7 4.2-.6 6.4-2.8 7-7Z"/><path d="M19 3v3M17.5 4.5h3"/>'],
+  ["bolo", "Bolo", '<path d="M4 21h16v-7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7Z"/><path d="M4 16c1.3 1.2 2.7 1.2 4 0s2.7-1.2 4 0 2.7 1.2 4 0 2.7-1.2 4 0"/><path d="M12 12V8M12 5.5c.8-.8.8-1.7 0-2.5-.8.8-.8 1.7 0 2.5Z"/>'],
+  ["estrela", "Estrela", '<path d="M12 3l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.8L12 3Z"/>'],
+  ["flor", "Flor", '<circle cx="12" cy="10" r="2.2"/><path d="M12 7.8C12 5 13.5 3.5 12 3c-1.5.5 0 2 0 4.8ZM14.2 10c2.8 0 4.3-1.5 4.8 0-.5 1.5-2 0-4.8 0ZM12 12.2c0 2.8 1.5 4.3 0 4.8-1.5-.5 0-2 0-4.8ZM9.8 10C7 10 5.5 11.5 5 10c.5-1.5 2 0 4.8 0Z"/><path d="M12 17v4"/>'],
+  ["diploma", "Formatura", '<path d="M2 9l10-5 10 5-10 5L2 9Z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v6"/>'],
+  ["bebe", "Bebê", '<circle cx="12" cy="8" r="4"/><path d="M5 21c0-4 3-7 7-7s7 3 7 7"/><path d="M10.5 8h.01M13.5 8h.01"/>'],
+  ["arvore", "Árvore", '<path d="M12 3l5 7h-3l4 6H6l4-6H7l5-7Z"/><path d="M12 16v5"/>'],
+  ["casa", "Casa", '<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9Z"/><path d="M10 21v-6h4v6"/>'],
+  ["pata", "Pet", '<circle cx="7" cy="10" r="1.6"/><circle cx="10.5" cy="6.5" r="1.6"/><circle cx="14.5" cy="6.5" r="1.6"/><circle cx="18" cy="10" r="1.6"/><path d="M12 12c-3 0-5 3-5 5.5 0 1.5 1.5 2 3 1.5s2.5-.5 4 0 3 0 3-1.5C17 15 15 12 12 12Z"/>'],
+  ["tag", "Etiqueta", '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/>']
+];
+const PATH_ICONE = Object.fromEntries(ICONES_OFERTA.map(([id, , p]) => [id, p]));
+const svgOferta = (id, size = 22) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATH_ICONE[id] || PATH_ICONE.presente}</svg>`;
+
+// ideias que o card pode abrir (as faixas de preço também existem no site)
+const IDEIAS_OFERTA = [
+  ...IDEIAS,
+  { grupo: "Por faixa de preço", itens: [["ate-30", "Mimos até R$ 30"], ["30-a-70", "Kits de R$ 30 a R$ 70"], ["acima-70", "Presentes especiais (acima de R$ 70)"]] }
+];
+const NOME_IDEIA_OFERTA = Object.fromEntries(IDEIAS_OFERTA.flatMap((g) => g.itens));
+
+let sortOfertas = null;
+
+async function carregarOfertas() {
+  const { data, error } = await sb.from("ofertas").select("*").order("posicao").order("criado_em");
+  state.ofertasDisponivel = !error;
+  state.ofertas = error ? [] : data;
+  renderOfertas();
+}
+
+function renderOfertas() {
+  const lista = $("#listaOfertas");
+  const vazio = $("#vazioOfertas");
+  $("#btnNovaOferta").disabled = !state.ofertasDisponivel;
+
+  if (!state.ofertasDisponivel) {
+    lista.hidden = true;
+    vazio.hidden = false;
+    vazio.innerHTML = `<p>Falta criar a tabela de ofertas: rode o arquivo <code>supabase/migracao-ofertas.sql</code> no SQL Editor do Supabase e recarregue a página.</p><p class="small" style="margin-top:8px">Enquanto isso, o site mostra as 6 ofertas padrão.</p>`;
+    return;
+  }
+
+  const noSite = state.ofertas.filter((o) => o.ativo).length;
+  $("#resumoOfertas").textContent = state.ofertas.length
+    ? `${state.ofertas.length} oferta${state.ofertas.length > 1 ? "s" : ""} · ${noSite} no site · aparecem no topo do site, ao lado do título`
+    : "Cards que aparecem no topo do site, ao lado do título.";
+
+  lista.hidden = !state.ofertas.length;
+  vazio.hidden = !!state.ofertas.length;
+  if (!state.ofertas.length) {
+    vazio.innerHTML = `<p>Nenhuma oferta cadastrada. Sem ofertas, o topo do site mostra só o título e o botão do WhatsApp.</p><button class="btn btn-primary" type="button" data-acao="nova-oferta">Criar a primeira oferta</button>`;
+  }
+
+  lista.innerHTML = state.ofertas.map((o) => {
+    const destino = o.ideia
+      ? `mostra: ${NOME_IDEIA_OFERTA[o.ideia] || o.ideia}`
+      : "abre o WhatsApp";
+    return `
+    <li class="p-row${o.ativo ? "" : " is-off"}" data-id="${esc(o.id)}">
+      <span class="grip" aria-hidden="true">⋮⋮</span>
+      <div class="p-thumb o-icon">${svgOferta(o.icone)}</div>
+      <div class="p-info">
+        <button type="button" class="p-name" data-acao="editar">${esc(o.nome)}</button>
+        <span class="p-meta">${o.detalhe ? `${esc(o.detalhe)} · ` : ""}${esc(destino)}${o.ativo ? "" : " · fora do site"}</span>
+      </div>
+      <span class="p-price o-spacer" aria-hidden="true"></span>
+      <div class="p-toggles">
+        <button type="button" class="toggle t-ativo${o.ativo ? " on" : ""}" data-acao="ativo" aria-pressed="${o.ativo}" title="${o.ativo ? "Aparece no site — clique para esconder" : "Escondida — clique para mostrar no site"}">${o.ativo ? ICONE_OLHO : ICONE_OLHO_OFF}</button>
+      </div>
+      <button type="button" class="icon-btn p-edit" data-acao="editar" aria-label="Editar ${esc(o.nome)}">${ICONE_LAPIS}</button>
+    </li>`;
+  }).join("");
+
+  if (sortOfertas) sortOfertas.destroy();
+  sortOfertas = new Sortable(lista, {
+    handle: ".grip",
+    animation: 150,
+    ghostClass: "sortable-ghost",
+    chosenClass: "sortable-chosen",
+    onEnd: async (evt) => {
+      if (evt.oldIndex === evt.newIndex) return;
+      const ids = $$("#listaOfertas .p-row").map((li) => li.dataset.id);
+      const porId = Object.fromEntries(state.ofertas.map((o) => [o.id, o]));
+      state.ofertas = ids.map((id, i) => ({ ...porId[id], posicao: i + 1 }));
+      const { error } = await sb.rpc("reordenar_ofertas", { ids });
+      if (error) { toast(mensagemErro(error), true); await carregarOfertas(); }
+      else toast("Ordem das ofertas salva");
+    }
+  });
+}
+
+function atualizarPreviaOferta() {
+  const f = $("#formOferta");
+  const icone = (f.querySelector('input[name="icone"]:checked') || {}).value || "presente";
+  const nome = f.nome.value.trim() || "Nome da oferta";
+  const detalhe = f.detalhe.value.trim();
+  $("#ofertaPrevia").innerHTML = `
+    <span class="pv-icon">${svgOferta(icone, 20)}</span>
+    <span><span class="pv-name">${esc(nome)}</span>${detalhe ? `<span class="pv-detail">${esc(detalhe)}</span>` : ""}</span>
+    <svg class="pv-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>`;
+}
+
+function abrirOferta(o) {
+  const f = $("#formOferta");
+  state.ofertaEditando = o;
+  $("#ofertaErro").textContent = "";
+  $("#dlgOfertaTitulo").textContent = o ? "Editar oferta" : "Nova oferta";
+  $("#btnExcluirOferta").hidden = !o;
+  $("#btnSalvarOferta").textContent = o ? "Salvar alterações" : "Criar oferta";
+
+  f.nome.value = o?.nome || "";
+  f.detalhe.value = o?.detalhe || "";
+  f.ativo.checked = o ? o.ativo : true;
+  const iconeAtual = o?.icone || "presente";
+  $("#ofertaIcones").innerHTML = ICONES_OFERTA.map(([id, nome]) => `
+    <label class="icon-opt">
+      <input type="radio" name="icone" value="${id}"${id === iconeAtual ? " checked" : ""}>
+      <span>${svgOferta(id)}<small>${esc(nome)}</small></span>
+    </label>`).join("");
+  $("#ofertaIdeia").innerHTML =
+    `<option value="">Nenhuma — abrir o WhatsApp</option>` +
+    IDEIAS_OFERTA.map((g) => `<optgroup label="${esc(g.grupo)}">${
+      g.itens.map(([id, nome]) => `<option value="${id}">${esc(nome)}</option>`).join("")
+    }</optgroup>`).join("");
+  f.ideia.value = o?.ideia || "";
+  atualizarPreviaOferta();
+
+  $("#dlgOferta").showModal();
+  if (!o) setTimeout(() => f.nome.focus(), 50);
+}
+
+function ligarOfertas() {
+  const dlg = $("#dlgOferta");
+  const f = $("#formOferta");
+
+  $("#btnNovaOferta").addEventListener("click", () => abrirOferta(null));
+  $("#vazioOfertas").addEventListener("click", (e) => {
+    if (e.target.closest("[data-acao=nova-oferta]")) abrirOferta(null);
+  });
+
+  // prévia ao vivo
+  f.addEventListener("input", atualizarPreviaOferta);
+  f.addEventListener("change", atualizarPreviaOferta);
+
+  // sugere um ícone e a ideia pelo nome (só numa oferta nova e se ainda não mexeu)
+  f.nome.addEventListener("blur", () => {
+    if (state.ofertaEditando || f.ideia.value) return;
+    const n = slug(f.nome.value);
+    const pistas = [
+      [/pais|maes|mae|pai/, "dia-das-maes-pais"], [/namorad|casal|casament/, "namorados"],
+      [/professor/, "professores"], [/crianc/, "criancas"], [/natal|fim-de-ano/, "natal"],
+      [/mulher/, "dia-da-mulher"], [/aniversari/, "aniversario"], [/bebe|maternidade|cha/, "maternidade"],
+      [/formatura/, "formatura"], [/pet/, "pets"], [/avo/, "avos"]
+    ];
+    const achou = pistas.find(([re]) => re.test(n));
+    if (achou) { f.ideia.value = achou[1]; atualizarPreviaOferta(); }
+  });
+
+  f.addEventListener("submit", async (e) => {
+    if (e.submitter && e.submitter.value === "cancel") return;
+    e.preventDefault();
+    const erro = $("#ofertaErro");
+    erro.textContent = "";
+    const nome = f.nome.value.trim();
+    if (!nome) return (erro.textContent = "Informe o nome da oferta.");
+
+    const campos = {
+      nome,
+      detalhe: f.detalhe.value.trim(),
+      icone: (f.querySelector('input[name="icone"]:checked') || {}).value || "presente",
+      ideia: f.ideia.value,
+      ativo: f.ativo.checked
+    };
+
+    const btn = $("#btnSalvarOferta");
+    const rotulo = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Salvando…";
+    try {
+      const antiga = state.ofertaEditando;
+      if (antiga) {
+        const { data, error } = await sb.from("ofertas").update(campos).eq("id", antiga.id).select().single();
+        if (error) throw error;
+        state.ofertas = state.ofertas.map((o) => (o.id === antiga.id ? data : o));
+        toast("Oferta atualizada");
+      } else {
+        const posicao = Math.max(0, ...state.ofertas.map((o) => o.posicao || 0)) + 1;
+        const { data, error } = await sb.from("ofertas").insert({ ...campos, posicao }).select().single();
+        if (error) throw error;
+        state.ofertas.push(data);
+        toast("Oferta criada");
+      }
+      dlg.close();
+      renderOfertas();
+    } catch (err) {
+      erro.textContent = mensagemErro(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = rotulo;
+    }
+  });
+
+  $("#btnExcluirOferta").addEventListener("click", async () => {
+    const o = state.ofertaEditando;
+    if (!o) return;
+    const ok = await confirmar(`Excluir a oferta “${o.nome}”? Se quiser só tirar do site por um tempo, use o botão de visibilidade.`);
+    if (!ok) return;
+    const { error } = await sb.from("ofertas").delete().eq("id", o.id);
+    if (error) return toast(mensagemErro(error), true);
+    state.ofertas = state.ofertas.filter((x) => x.id !== o.id);
+    dlg.close();
+    renderOfertas();
+    toast("Oferta excluída");
+  });
+
+  $("#listaOfertas").addEventListener("click", async (e) => {
+    const alvo = e.target.closest("[data-acao]");
+    if (!alvo) return;
+    const id = alvo.closest(".p-row").dataset.id;
+    const o = state.ofertas.find((x) => x.id === id);
+    if (!o) return;
+    if (alvo.dataset.acao === "editar") abrirOferta(o);
+    if (alvo.dataset.acao === "ativo") {
+      const { data, error } = await sb.from("ofertas").update({ ativo: !o.ativo }).eq("id", id).select().single();
+      if (error) return toast(mensagemErro(error), true);
+      state.ofertas = state.ofertas.map((x) => (x.id === id ? data : x));
+      renderOfertas();
+      toast(data.ativo ? "Oferta visível no site" : "Oferta escondida do site");
     }
   });
 }

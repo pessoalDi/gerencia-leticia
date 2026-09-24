@@ -99,6 +99,7 @@
       <nav class="tabs" aria-label="Seções">
         <button class="tab active" data-view="produtos">Produtos</button>
         <button class="tab" data-view="categorias">Categorias</button>
+        <button class="tab" data-view="ofertas">Ofertas</button>
         <button class="tab" data-view="kits">Kits</button>
         <button class="tab" data-view="galeria">Galeria</button>
         <button class="tab" data-view="importar">Importar planilha</button>
@@ -154,6 +155,25 @@
       </form>
 
       <ul class="cat-list" id="listaCategorias"></ul>
+    </section>
+
+    <!-- ---------- OFERTAS (topo do site) ---------- -->
+    <section class="view" id="viewOfertas" hidden>
+      <div class="view-head">
+        <div>
+          <h2>Ofertas</h2>
+          <p class="muted" id="resumoOfertas">Cards que aparecem no topo do site, ao lado do título.</p>
+        </div>
+        <button class="btn btn-primary" id="btnNovaOferta" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Nova oferta
+        </button>
+      </div>
+
+      <p class="hint">Arraste pela alça <span class="grip-inline" aria-hidden="true">⋮⋮</span> para mudar a ordem. No computador ficam 2 por linha; o ideal é deixar entre 4 e 8 visíveis.</p>
+
+      <ul class="product-list" id="listaOfertas"></ul>
+      <div class="empty" id="vazioOfertas" hidden></div>
     </section>
 
     <!-- ---------- KITS ---------- -->
@@ -335,6 +355,61 @@
       <span class="spacer"></span>
       <button class="btn btn-ghost" value="cancel" formnovalidate>Cancelar</button>
       <button class="btn btn-primary" id="btnSalvarProduto" type="submit" value="default">Salvar produto</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- ===================== EDITAR OFERTA ===================== -->
+<dialog class="sheet" id="dlgOferta" aria-labelledby="dlgOfertaTitulo">
+  <form method="dialog" class="sheet-form" id="formOferta" novalidate>
+    <header class="sheet-head">
+      <h3 id="dlgOfertaTitulo">Nova oferta</h3>
+      <button class="icon-btn" value="cancel" formnovalidate aria-label="Fechar">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+
+    <div class="sheet-body">
+      <label class="field">
+        <span>Nome da oferta</span>
+        <input type="text" name="nome" placeholder="Ex.: Dia dos Pais" maxlength="40" required>
+      </label>
+
+      <label class="field">
+        <span>Detalhe (opcional)</span>
+        <input type="text" name="detalhe" placeholder="Ex.: Kits a partir de R$ 49 · até 15% off" maxlength="50">
+        <small class="muted">Aparece em letra pequena embaixo do nome.</small>
+      </label>
+
+      <fieldset class="field ideas-field">
+        <legend>Ícone</legend>
+        <div class="icon-pick" id="ofertaIcones"><!-- gerado via JS --></div>
+      </fieldset>
+
+      <label class="field">
+        <span>Ao clicar, mostrar os presentes de</span>
+        <select name="ideia" id="ofertaIdeia"></select>
+        <small class="muted">São as mesmas ideias da gaveta “Ideias” do site: aparecem os produtos e os kits marcados nela. Sem ideia, o card abre o WhatsApp.</small>
+      </label>
+
+      <div class="field">
+        <span>Exibição</span>
+        <label class="check"><input type="checkbox" name="ativo"> Aparece no site</label>
+      </div>
+
+      <div class="offer-preview-wrap">
+        <p class="muted small">Prévia</p>
+        <div class="offer-preview" id="ofertaPrevia"></div>
+      </div>
+
+      <p class="form-error" id="ofertaErro" role="alert"></p>
+    </div>
+
+    <footer class="sheet-foot">
+      <button class="btn btn-text danger" id="btnExcluirOferta" type="button" hidden>Excluir oferta</button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarOferta" type="submit" value="default">Salvar oferta</button>
     </footer>
   </form>
 </dialog>
