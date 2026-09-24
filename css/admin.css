@@ -384,7 +384,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .gal-panel-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
-.gal-type-edit { display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 260px; max-width: 480px; }
+.gal-type-edit { display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 260px; max-width: 620px; flex-wrap: wrap; }
+.gal-type-edit .gal-type-price { flex: 0 0 150px; }
+.gal-price { position: relative; }
+.gal-price::before {
+  content: "R$";
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 0.78rem; color: var(--muted); pointer-events: none;
+}
+.gal-body .gal-price input { padding-left: 32px; font-variant-numeric: tabular-nums; }
 .gal-type-edit .field { flex: 1; margin-bottom: 0; }
 .gal-type-actions { display: flex; gap: 6px; padding-bottom: 2px; }
 .gal-upload { margin-bottom: 2px; }
@@ -419,7 +427,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 .gal-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .gal-body input { min-height: 36px; padding: 6px 10px; font-size: 0.88rem; }
-.gal-body input.saved { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(46,122,80,0.15); }
+.gal-body input.saved, #galTipoPreco.saved { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(46,122,80,0.15); }
 .gal-card-actions { display: flex; justify-content: space-between; align-items: center; }
 .gal-card-actions .toggle { width: 34px; height: 34px; }
 
@@ -540,6 +548,8 @@ dialog::backdrop { background: rgba(24, 51, 40, 0.45); }
   .gal-add-type { max-width: none; }
   .gal-add-type input { flex: 1; }
   .gal-upload { width: 100%; }
+  .gal-type-edit .field { flex: 1 1 100%; }
+  .gal-type-edit .gal-type-price { flex: 1 1 auto; }
   .c-count { display: none; }
 
   .grid-2 { grid-template-columns: 1fr; }

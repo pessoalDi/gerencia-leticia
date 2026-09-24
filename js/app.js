@@ -107,6 +107,7 @@ function mensagemErro(err) {
   const m = (err && (err.message || err.error_description)) || String(err);
   if (/row-level security|permission denied/i.test(m)) return "Sem permissão. Confira se seu e-mail está na tabela admins do Supabase.";
   if (/duplicate key/i.test(m)) return "Já existe um produto com esse código.";
+  if (/preco/i.test(m) && /galeria|column|schema cache/i.test(m)) return "Falta rodar o arquivo supabase/migracao-galeria-precos.sql no SQL Editor do Supabase.";
   if (/tags/i.test(m) && /column|schema cache/i.test(m)) return "Falta rodar o arquivo supabase/migracao-ideias.sql no SQL Editor do Supabase.";
   if (/Failed to fetch|NetworkError/i.test(m)) return "Sem conexão com o banco. Verifique a internet e tente de novo.";
   return m;
@@ -929,6 +930,8 @@ function renderGaleria() {
   // cabeçalho do tipo
   const nomeInput = $("#galTipoNome");
   if (document.activeElement !== nomeInput) nomeInput.value = tipo.nome;
+  const precoTipo = $("#galTipoPreco");
+  if (document.activeElement !== precoTipo) precoTipo.value = tipo.preco != null ? brlNumero(tipo.preco) : "";
   const btnAtivo = $("#galTipoAtivo");
   btnAtivo.classList.toggle("on", tipo.ativo);
   btnAtivo.setAttribute("aria-pressed", String(tipo.ativo));
@@ -948,6 +951,9 @@ function renderGaleria() {
         </div>
         <div class="gal-body">
           <input type="text" value="${esc(f.legenda)}" placeholder="Legenda (opcional)" data-acao="legenda" aria-label="Legenda da foto">
+          <label class="gal-price">
+            <input type="text" inputmode="decimal" value="${f.preco != null ? brlNumero(f.preco) : ""}" placeholder="${tipo.preco != null ? "igual ao tipo" : "valor (opcional)"}" data-acao="preco-foto" aria-label="Valor desta ideia">
+          </label>
           <div class="gal-card-actions">
             <button type="button" class="toggle t-ativo${f.ativo ? " on" : ""}" data-acao="ativo" aria-pressed="${f.ativo}" title="${f.ativo ? "Aparece no site — clique para esconder" : "Escondida — clique para mostrar"}">${f.ativo ? ICONE_OLHO : ICONE_OLHO_OFF}</button>
             <button type="button" class="icon-btn danger" data-acao="excluir" aria-label="Excluir foto">
@@ -1028,6 +1034,37 @@ function ligarGaleria() {
     toast("Nome do tipo atualizado");
   });
 
+  // preço "a partir de" do tipo (vazio = sem valor)
+  const precoTipo = $("#galTipoPreco");
+  precoTipo.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); precoTipo.blur(); }
+  });
+  precoTipo.addEventListener("blur", async () => {
+    const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
+    if (!tipo) return;
+    const texto = precoTipo.value.trim();
+    const preco = texto ? lerPreco(texto) : null;
+    if (Number.isNaN(preco)) {
+      toast("Valor inválido. Use o formato 35,00", true);
+      precoTipo.value = tipo.preco != null ? brlNumero(tipo.preco) : "";
+      return;
+    }
+    if ((tipo.preco == null ? null : Number(tipo.preco)) === preco) {
+      precoTipo.value = preco != null ? brlNumero(preco) : "";
+      return;
+    }
+    const { error } = await sb.from("galeria_tipos").update({ preco }).eq("id", tipo.id);
+    if (error) {
+      precoTipo.value = tipo.preco != null ? brlNumero(tipo.preco) : "";
+      return toast(mensagemErro(error), true);
+    }
+    tipo.preco = preco;
+    precoTipo.classList.add("saved");
+    setTimeout(() => precoTipo.classList.remove("saved"), 1200);
+    renderGaleria();
+    toast(preco != null ? `${tipo.nome}: a partir de R$ ${brlNumero(preco)}` : `${tipo.nome}: sem valor no site`);
+  });
+
   // mostrar/esconder tipo
   $("#galTipoAtivo").addEventListener("click", async () => {
     const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
@@ -1105,11 +1142,39 @@ function ligarGaleria() {
   const grade = $("#galFotos");
 
   grade.addEventListener("keydown", (e) => {
-    if (e.target.dataset.acao === "legenda" && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+    if ((e.target.dataset.acao === "legenda" || e.target.dataset.acao === "preco-foto") && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
   });
 
   grade.addEventListener("focusout", async (e) => {
     const input = e.target;
+    if (input.dataset.acao === "preco-foto") {
+      const id = input.closest(".gal-card").dataset.id;
+      const foto = state.galFotos.find((f) => f.id === id);
+      if (!foto) return;
+      const texto = input.value.trim();
+      const preco = texto ? lerPreco(texto) : null;
+      const atual = foto.preco == null ? null : Number(foto.preco);
+      if (Number.isNaN(preco)) {
+        toast("Valor inválido. Use o formato 45,00", true);
+        input.value = atual != null ? brlNumero(atual) : "";
+        return;
+      }
+      if (preco === atual) {
+        input.value = preco != null ? brlNumero(preco) : "";
+        return;
+      }
+      try {
+        await atualizarFotoGaleria(id, { preco });
+        input.value = preco != null ? brlNumero(preco) : "";
+        input.classList.add("saved");
+        setTimeout(() => input.classList.remove("saved"), 1200);
+        toast(preco != null ? `Valor salvo: R$ ${brlNumero(preco)}` : "Valor removido desta foto");
+      } catch (err) {
+        input.value = atual != null ? brlNumero(atual) : "";
+        toast(mensagemErro(err), true);
+      }
+      return;
+    }
     if (input.dataset.acao !== "legenda") return;
     const id = input.closest(".gal-card").dataset.id;
     const foto = state.galFotos.find((f) => f.id === id);
@@ -1128,7 +1193,7 @@ function ligarGaleria() {
 
   grade.addEventListener("click", async (e) => {
     const alvo = e.target.closest("[data-acao]");
-    if (!alvo || alvo.dataset.acao === "legenda") return;
+    if (!alvo || alvo.dataset.acao === "legenda" || alvo.dataset.acao === "preco-foto") return;
     const id = alvo.closest(".gal-card").dataset.id;
     const foto = state.galFotos.find((f) => f.id === id);
     if (!foto) return;

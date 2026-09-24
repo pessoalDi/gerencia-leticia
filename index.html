@@ -179,6 +179,10 @@
               <span>Nome do tipo</span>
               <input type="text" id="galTipoNome" aria-label="Nome do tipo">
             </label>
+            <label class="field gal-type-price">
+              <span>A partir de (R$)</span>
+              <input type="text" id="galTipoPreco" inputmode="decimal" placeholder="opcional" aria-label="Preço a partir de, deste tipo">
+            </label>
             <div class="gal-type-actions">
               <button type="button" class="toggle t-ativo" id="galTipoAtivo" aria-pressed="true" title="Mostrar/esconder este tipo no site"></button>
               <button type="button" class="icon-btn danger" id="galTipoExcluir" aria-label="Excluir este tipo">
@@ -192,7 +196,7 @@
             Adicionar fotos
           </label>
         </div>
-        <p class="hint" id="galDica">Pode escolher várias fotos de uma vez. Arraste pela alça para mudar a ordem; a legenda salva ao sair do campo.</p>
+        <p class="hint" id="galDica">Pode escolher várias fotos de uma vez. Arraste pela alça para mudar a ordem. Legenda e valor salvam ao sair do campo; foto sem valor mostra o “a partir de” do tipo.</p>
         <p class="gal-progress" id="galProgresso" hidden></p>
         <ul class="gal-grid" id="galFotos"></ul>
         <div class="empty" id="galVazio" hidden>
