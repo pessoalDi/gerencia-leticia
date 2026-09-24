@@ -99,6 +99,7 @@
       <nav class="tabs" aria-label="Seções">
         <button class="tab active" data-view="produtos">Produtos</button>
         <button class="tab" data-view="categorias">Categorias</button>
+        <button class="tab" data-view="galeria">Galeria</button>
         <button class="tab" data-view="importar">Importar planilha</button>
       </nav>
       <div class="topbar-actions">
@@ -152,6 +153,56 @@
       </form>
 
       <ul class="cat-list" id="listaCategorias"></ul>
+    </section>
+
+    <!-- ---------- GALERIA ("Se inspire nessas ideias") ---------- -->
+    <section class="view" id="viewGaleria" hidden>
+      <div class="view-head">
+        <div>
+          <h2>Galeria de ideias</h2>
+          <p class="muted">Trabalhos já feitos, separados por tipo. Aparecem na página “Se inspire nessas ideias” do site.</p>
+        </div>
+      </div>
+
+      <div class="gal-types-bar">
+        <div class="chips gal-types" id="galTipos" role="group" aria-label="Tipos da galeria"></div>
+        <form class="gal-add-type" id="formGalTipo">
+          <input type="text" name="nome" placeholder="Novo tipo (ex.: Caderno A4)" required aria-label="Nome do novo tipo">
+          <button class="btn btn-ghost" type="submit">Criar tipo</button>
+        </form>
+      </div>
+
+      <div class="panel gal-panel" id="galPainel" hidden>
+        <div class="gal-panel-head">
+          <div class="gal-type-edit">
+            <label class="field">
+              <span>Nome do tipo</span>
+              <input type="text" id="galTipoNome" aria-label="Nome do tipo">
+            </label>
+            <div class="gal-type-actions">
+              <button type="button" class="toggle t-ativo" id="galTipoAtivo" aria-pressed="true" title="Mostrar/esconder este tipo no site"></button>
+              <button type="button" class="icon-btn danger" id="galTipoExcluir" aria-label="Excluir este tipo">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+              </button>
+            </div>
+          </div>
+          <label class="btn btn-primary gal-upload">
+            <input type="file" id="galFotosInput" accept="image/*" multiple hidden>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Adicionar fotos
+          </label>
+        </div>
+        <p class="hint" id="galDica">Pode escolher várias fotos de uma vez. Arraste pela alça para mudar a ordem; a legenda salva ao sair do campo.</p>
+        <p class="gal-progress" id="galProgresso" hidden></p>
+        <ul class="gal-grid" id="galFotos"></ul>
+        <div class="empty" id="galVazio" hidden>
+          <p>Nenhuma foto neste tipo ainda.</p>
+        </div>
+      </div>
+
+      <div class="empty" id="galSemTipos" hidden>
+        <p>Crie o primeiro tipo acima (ex.: Caderno A5) para começar a adicionar fotos.</p>
+      </div>
     </section>
 
     <!-- ---------- IMPORTAR ---------- -->

@@ -374,6 +374,55 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .c-count { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
 .c-id { font-size: 0.78rem; color: var(--muted); }
 
+/* ---------- galeria ---------- */
+.gal-types-bar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.gal-types .chip { cursor: pointer; }
+.gal-types .chip.is-off { opacity: 0.55; }
+.gal-add-type { display: flex; gap: 10px; max-width: 520px; }
+
+.gal-panel { padding: 18px; }
+.gal-panel-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.gal-type-edit { display: flex; align-items: flex-end; gap: 10px; flex: 1; min-width: 260px; max-width: 480px; }
+.gal-type-edit .field { flex: 1; margin-bottom: 0; }
+.gal-type-actions { display: flex; gap: 6px; padding-bottom: 2px; }
+.gal-upload { margin-bottom: 2px; }
+.gal-progress { font-size: 0.88rem; color: var(--pine); margin: 0 0 10px; }
+
+.gal-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+}
+.gal-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.gal-card.is-off .gal-thumb { opacity: 0.45; }
+.gal-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: var(--sage);
+}
+.gal-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.gal-thumb .grip {
+  position: absolute; top: 6px; left: 6px;
+  width: 34px; height: 34px;
+  border-radius: var(--r-sm);
+  background: rgba(255,255,255,0.92);
+  color: var(--muted);
+}
+.gal-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.gal-body input { min-height: 36px; padding: 6px 10px; font-size: 0.88rem; }
+.gal-body input.saved { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(46,122,80,0.15); }
+.gal-card-actions { display: flex; justify-content: space-between; align-items: center; }
+.gal-card-actions .toggle { width: 34px; height: 34px; }
+
 /* ---------- import ---------- */
 .import-preview { margin-top: 14px; overflow-x: auto; }
 .import-preview table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -487,6 +536,10 @@ dialog::backdrop { background: rgba(24, 51, 40, 0.45); }
   .p-edit { grid-area: edit; }
 
   .c-row { grid-template-columns: 24px minmax(0, 1fr) auto auto; }
+  .gal-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .gal-add-type { max-width: none; }
+  .gal-add-type input { flex: 1; }
+  .gal-upload { width: 100%; }
   .c-count { display: none; }
 
   .grid-2 { grid-template-columns: 1fr; }

@@ -50,6 +50,10 @@ const state = {
   filtro: "todos",
   filtroIdeia: "",
   busca: "",
+  galTipos: [],          // galeria: tipos (Caderno A5, A6...)
+  galFotos: [],          // galeria: fotos de trabalhos feitos
+  galTipoSel: null,      // tipo aberto na aba Galeria
+  galDisponivel: true,   // false se a migração da galeria ainda não foi rodada
   editando: null,        // produto aberto no formulário (null = novo)
   fotoNova: null,        // Blob redimensionado aguardando envio
   removerFoto: false,
@@ -59,6 +63,8 @@ const state = {
 let sb = null;
 let sortProdutos = null;
 let sortCategorias = null;
+let sortGalFotos = null;
+let sortGalTipos = null;
 
 /* ---------------- utilidades ---------------- */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -164,6 +170,7 @@ async function iniciar() {
   ligarProdutos();
   ligarFormularioProduto();
   ligarCategorias();
+  ligarGaleria();
   ligarImportacao();
 
   const { data } = await sb.auth.getSession();
@@ -230,6 +237,27 @@ async function carregarTudo() {
   state.produtos = prods.data;
   renderProdutos();
   renderCategorias();
+  await carregarGaleria();
+}
+
+async function carregarGaleria() {
+  const [tipos, fotos] = await Promise.all([
+    sb.from("galeria_tipos").select("*").order("posicao").order("nome"),
+    sb.from("galeria_fotos").select("*").order("posicao").order("criado_em")
+  ]);
+  if (tipos.error || fotos.error) {
+    // tabelas ainda não existem: a aba mostra o aviso, o resto da Gerência segue normal
+    state.galDisponivel = false;
+    renderGaleria();
+    return;
+  }
+  state.galDisponivel = true;
+  state.galTipos = tipos.data;
+  state.galFotos = fotos.data;
+  if (!state.galTipos.some((t) => t.id === state.galTipoSel)) {
+    state.galTipoSel = state.galTipos[0]?.id || null;
+  }
+  renderGaleria();
 }
 
 /* ---------------- abas ---------------- */
@@ -240,6 +268,7 @@ function ligarAbas() {
       const v = tab.dataset.view;
       $("#viewProdutos").hidden = v !== "produtos";
       $("#viewCategorias").hidden = v !== "categorias";
+      $("#viewGaleria").hidden = v !== "galeria";
       $("#viewImportar").hidden = v !== "importar";
       window.scrollTo(0, 0);
     })
@@ -304,14 +333,13 @@ function linhaProduto(p) {
   const foto = p.imagem_url
     ? `<img src="${esc(p.imagem_url)}" alt="" loading="lazy">`
     : "sem foto";
-  const nIdeias = (p.tags || []).length;
   return `
   <li class="p-row${p.ativo ? "" : " is-off"}" data-id="${esc(p.id)}">
     <span class="grip" aria-hidden="true">⋮⋮</span>
     <div class="p-thumb">${foto}</div>
     <div class="p-info">
       <button type="button" class="p-name" data-acao="editar">${esc(p.nome)}</button>
-      <span class="p-meta">${esc(p.id)} · ${esc(nomeCategoria(p.categoria))}${nIdeias ? ` · ${nIdeias} ${nIdeias === 1 ? "ideia" : "ideias"}` : ""}${p.ativo ? "" : " · fora do site"}</span>
+      <span class="p-meta">${esc(p.id)} · ${esc(nomeCategoria(p.categoria))}${(p.tags || []).length ? ` · ${(p.tags || []).length} ${(p.tags || []).length === 1 ? "ideia" : "ideias"}` : ""}${p.ativo ? "" : " · fora do site"}</span>
     </div>
     <label class="p-price">
       <input type="text" inputmode="decimal" value="${brlNumero(p.preco)}" data-acao="preco" aria-label="Preço de ${esc(p.nome)}">
@@ -548,8 +576,6 @@ function abrirProduto(p) {
   f.nome.value = p?.nome || "";
   f.descricao.value = p?.descricao || "";
   f.preco.value = p ? brlNumero(p.preco) : "";
-
-  // ideias já marcadas; num produto novo, já vem marcada a ideia do filtro ativo
   const marcadas = new Set(p?.tags || (state.filtroIdeia && state.filtroIdeia !== "__sem" ? [state.filtroIdeia] : []));
   $("#campoIdeias").innerHTML = IDEIAS.map((g) => `
     <div class="idea-group">
@@ -562,7 +588,6 @@ function abrirProduto(p) {
           </label>`).join("")}
       </div>
     </div>`).join("");
-
   f.ativo.checked = p ? p.ativo : true;
   f.favorito.checked = p ? p.favorito : false;
   mostrarFoto(p?.imagem_url || null);
@@ -851,6 +876,287 @@ function ligarCategorias() {
 }
 
 /* ============================================================
+   GALERIA — "Se inspire nessas ideias"
+   ============================================================ */
+function fotosDoTipo(tipoId) {
+  return state.galFotos.filter((f) => f.tipo === tipoId);
+}
+
+function renderGaleria() {
+  const semTabelas = !state.galDisponivel;
+  $("#formGalTipo").hidden = semTabelas;
+  if (semTabelas) {
+    $("#galTipos").innerHTML = "";
+    $("#galPainel").hidden = true;
+    $("#galSemTipos").hidden = false;
+    $("#galSemTipos").innerHTML = `<p>Falta criar as tabelas da galeria: rode o arquivo <code>supabase/migracao-galeria.sql</code> no SQL Editor do Supabase e recarregue a página.</p>`;
+    return;
+  }
+
+  // chips dos tipos
+  $("#galTipos").innerHTML = state.galTipos
+    .map((t) => {
+      const n = fotosDoTipo(t.id).length;
+      const sel = t.id === state.galTipoSel;
+      return `<button type="button" class="chip${sel ? " active" : ""}${t.ativo ? "" : " is-off"}" data-tipo="${esc(t.id)}" aria-pressed="${sel}">${esc(t.nome)} <b>${n}</b></button>`;
+    })
+    .join("");
+
+  const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
+  $("#galSemTipos").hidden = !!state.galTipos.length;
+  $("#galSemTipos").innerHTML = `<p>Crie o primeiro tipo acima (ex.: Caderno A5) para começar a adicionar fotos.</p>`;
+  $("#galPainel").hidden = !tipo;
+
+  if (sortGalTipos) sortGalTipos.destroy();
+  sortGalTipos = new Sortable($("#galTipos"), {
+    animation: 150,
+    delay: 250,
+    delayOnTouchOnly: true,
+    ghostClass: "sortable-ghost",
+    onEnd: async (evt) => {
+      if (evt.oldIndex === evt.newIndex) return;
+      const ids = $$("#galTipos .chip").map((c) => c.dataset.tipo);
+      const porId = Object.fromEntries(state.galTipos.map((t) => [t.id, t]));
+      state.galTipos = ids.map((id, i) => ({ ...porId[id], posicao: i + 1 }));
+      const { error } = await sb.rpc("reordenar_galeria_tipos", { ids });
+      if (error) { toast(mensagemErro(error), true); await carregarGaleria(); }
+      else toast("Ordem dos tipos salva");
+    }
+  });
+
+  if (!tipo) return;
+
+  // cabeçalho do tipo
+  const nomeInput = $("#galTipoNome");
+  if (document.activeElement !== nomeInput) nomeInput.value = tipo.nome;
+  const btnAtivo = $("#galTipoAtivo");
+  btnAtivo.classList.toggle("on", tipo.ativo);
+  btnAtivo.setAttribute("aria-pressed", String(tipo.ativo));
+  btnAtivo.title = tipo.ativo ? "Aparece no site — clique para esconder este tipo" : "Escondido — clique para mostrar no site";
+  btnAtivo.innerHTML = tipo.ativo ? ICONE_OLHO : ICONE_OLHO_OFF;
+
+  // fotos
+  const fotos = fotosDoTipo(tipo.id);
+  $("#galVazio").hidden = fotos.length > 0;
+  $("#galFotos").hidden = fotos.length === 0;
+  $("#galFotos").innerHTML = fotos
+    .map((f) => `
+      <li class="gal-card${f.ativo ? "" : " is-off"}" data-id="${esc(f.id)}">
+        <div class="gal-thumb">
+          <img src="${esc(f.imagem_url)}" alt="" loading="lazy">
+          <span class="grip" aria-hidden="true">⋮⋮</span>
+        </div>
+        <div class="gal-body">
+          <input type="text" value="${esc(f.legenda)}" placeholder="Legenda (opcional)" data-acao="legenda" aria-label="Legenda da foto">
+          <div class="gal-card-actions">
+            <button type="button" class="toggle t-ativo${f.ativo ? " on" : ""}" data-acao="ativo" aria-pressed="${f.ativo}" title="${f.ativo ? "Aparece no site — clique para esconder" : "Escondida — clique para mostrar"}">${f.ativo ? ICONE_OLHO : ICONE_OLHO_OFF}</button>
+            <button type="button" class="icon-btn danger" data-acao="excluir" aria-label="Excluir foto">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+            </button>
+          </div>
+        </div>
+      </li>`)
+    .join("");
+
+  if (sortGalFotos) sortGalFotos.destroy();
+  sortGalFotos = new Sortable($("#galFotos"), {
+    handle: ".grip",
+    animation: 150,
+    ghostClass: "sortable-ghost",
+    onEnd: async (evt) => {
+      if (evt.oldIndex === evt.newIndex) return;
+      const ids = $$("#galFotos .gal-card").map((li) => li.dataset.id);
+      const pos = Object.fromEntries(ids.map((id, i) => [id, i + 1]));
+      state.galFotos.forEach((f) => { if (pos[f.id]) f.posicao = pos[f.id]; });
+      state.galFotos.sort((a, b) => a.posicao - b.posicao);
+      const { error } = await sb.rpc("reordenar_galeria_fotos", { ids });
+      if (error) { toast(mensagemErro(error), true); await carregarGaleria(); }
+      else toast("Ordem das fotos salva");
+    }
+  });
+}
+
+async function atualizarFotoGaleria(id, campos) {
+  const { data, error } = await sb.from("galeria_fotos").update(campos).eq("id", id).select().single();
+  if (error) throw error;
+  const i = state.galFotos.findIndex((f) => f.id === id);
+  if (i >= 0) state.galFotos[i] = data;
+  return data;
+}
+
+function ligarGaleria() {
+  // escolher tipo
+  $("#galTipos").addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    state.galTipoSel = chip.dataset.tipo;
+    renderGaleria();
+  });
+
+  // criar tipo
+  $("#formGalTipo").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nome = e.target.nome.value.trim();
+    const id = slug(nome);
+    if (!id) return;
+    if (state.galTipos.some((t) => t.id === id)) return toast(`O tipo “${nome}” já existe.`, true);
+    const posicao = Math.max(0, ...state.galTipos.map((t) => t.posicao || 0)) + 1;
+    const { data, error } = await sb.from("galeria_tipos").insert({ id, nome, posicao }).select().single();
+    if (error) return toast(mensagemErro(error), true);
+    state.galTipos.push(data);
+    state.galTipoSel = data.id;
+    e.target.reset();
+    renderGaleria();
+    toast("Tipo criado. Agora adicione as fotos.");
+  });
+
+  // renomear tipo
+  const nomeInput = $("#galTipoNome");
+  nomeInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); nomeInput.blur(); }
+  });
+  nomeInput.addEventListener("blur", async () => {
+    const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
+    if (!tipo) return;
+    const nome = nomeInput.value.trim();
+    if (!nome) { nomeInput.value = tipo.nome; return; }
+    if (nome === tipo.nome) return;
+    const { error } = await sb.from("galeria_tipos").update({ nome }).eq("id", tipo.id);
+    if (error) { nomeInput.value = tipo.nome; return toast(mensagemErro(error), true); }
+    tipo.nome = nome;
+    renderGaleria();
+    toast("Nome do tipo atualizado");
+  });
+
+  // mostrar/esconder tipo
+  $("#galTipoAtivo").addEventListener("click", async () => {
+    const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
+    if (!tipo) return;
+    const { error } = await sb.from("galeria_tipos").update({ ativo: !tipo.ativo }).eq("id", tipo.id);
+    if (error) return toast(mensagemErro(error), true);
+    tipo.ativo = !tipo.ativo;
+    renderGaleria();
+    toast(tipo.ativo ? "Tipo visível no site" : "Tipo escondido do site");
+  });
+
+  // excluir tipo (e suas fotos)
+  $("#galTipoExcluir").addEventListener("click", async () => {
+    const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
+    if (!tipo) return;
+    const fotos = fotosDoTipo(tipo.id);
+    const ok = await confirmar(fotos.length
+      ? `Excluir o tipo “${tipo.nome}” e as ${fotos.length} foto(s) dele? Isso não pode ser desfeito. Se quiser só tirar do site, use o botão de visibilidade.`
+      : `Excluir o tipo “${tipo.nome}”?`);
+    if (!ok) return;
+    const { error } = await sb.from("galeria_tipos").delete().eq("id", tipo.id);
+    if (error) return toast(mensagemErro(error), true);
+    const caminhos = fotos.map((f) => caminhoNoStorage(f.imagem_url)).filter(Boolean);
+    if (caminhos.length) sb.storage.from(BUCKET).remove(caminhos).catch(() => {});
+    state.galTipos = state.galTipos.filter((t) => t.id !== tipo.id);
+    state.galFotos = state.galFotos.filter((f) => f.tipo !== tipo.id);
+    state.galTipoSel = state.galTipos[0]?.id || null;
+    renderGaleria();
+    toast("Tipo excluído");
+  });
+
+  // enviar várias fotos
+  $("#galFotosInput").addEventListener("change", async (e) => {
+    const arquivos = [...e.target.files];
+    e.target.value = "";
+    const tipo = state.galTipos.find((t) => t.id === state.galTipoSel);
+    if (!tipo || !arquivos.length) return;
+
+    const progresso = $("#galProgresso");
+    progresso.hidden = false;
+    let pos = Math.max(0, ...fotosDoTipo(tipo.id).map((f) => f.posicao || 0));
+    let enviadas = 0;
+    const falhas = [];
+
+    for (let i = 0; i < arquivos.length; i++) {
+      progresso.textContent = `Enviando foto ${i + 1} de ${arquivos.length}…`;
+      try {
+        const blob = await redimensionar(arquivos[i]);
+        const caminho = `galeria/${tipo.id}-${Date.now()}-${i}.jpg`;
+        const { error: upErr } = await sb.storage.from(BUCKET).upload(caminho, blob, {
+          contentType: "image/jpeg",
+          cacheControl: "31536000",
+          upsert: false
+        });
+        if (upErr) throw upErr;
+        const imagem_url = sb.storage.from(BUCKET).getPublicUrl(caminho).data.publicUrl;
+        const { data, error } = await sb.from("galeria_fotos")
+          .insert({ tipo: tipo.id, imagem_url, posicao: ++pos })
+          .select().single();
+        if (error) throw error;
+        state.galFotos.push(data);
+        enviadas++;
+        renderGaleria();
+      } catch (err) {
+        falhas.push(`${arquivos[i].name}: ${mensagemErro(err)}`);
+      }
+    }
+
+    progresso.hidden = true;
+    if (falhas.length) toast(`${enviadas} enviada(s), ${falhas.length} com erro. ${falhas[0]}`, true);
+    else toast(`${enviadas} foto(s) adicionada(s) em ${tipo.nome}`);
+  });
+
+  // legenda, visibilidade e exclusão de cada foto
+  const grade = $("#galFotos");
+
+  grade.addEventListener("keydown", (e) => {
+    if (e.target.dataset.acao === "legenda" && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+  });
+
+  grade.addEventListener("focusout", async (e) => {
+    const input = e.target;
+    if (input.dataset.acao !== "legenda") return;
+    const id = input.closest(".gal-card").dataset.id;
+    const foto = state.galFotos.find((f) => f.id === id);
+    const legenda = input.value.trim();
+    if (!foto || legenda === foto.legenda) return;
+    try {
+      await atualizarFotoGaleria(id, { legenda });
+      input.classList.add("saved");
+      setTimeout(() => input.classList.remove("saved"), 1200);
+      toast("Legenda salva");
+    } catch (err) {
+      input.value = foto.legenda;
+      toast(mensagemErro(err), true);
+    }
+  });
+
+  grade.addEventListener("click", async (e) => {
+    const alvo = e.target.closest("[data-acao]");
+    if (!alvo || alvo.dataset.acao === "legenda") return;
+    const id = alvo.closest(".gal-card").dataset.id;
+    const foto = state.galFotos.find((f) => f.id === id);
+    if (!foto) return;
+
+    if (alvo.dataset.acao === "ativo") {
+      try {
+        await atualizarFotoGaleria(id, { ativo: !foto.ativo });
+        renderGaleria();
+        toast(!foto.ativo ? "Foto visível no site" : "Foto escondida do site");
+      } catch (err) {
+        toast(mensagemErro(err), true);
+      }
+    }
+
+    if (alvo.dataset.acao === "excluir") {
+      const ok = await confirmar("Excluir esta foto da galeria? Isso não pode ser desfeito.");
+      if (!ok) return;
+      const { error } = await sb.from("galeria_fotos").delete().eq("id", id);
+      if (error) return toast(mensagemErro(error), true);
+      apagarFotoDoStorage(foto.imagem_url).catch(() => {});
+      state.galFotos = state.galFotos.filter((f) => f.id !== id);
+      renderGaleria();
+      toast("Foto excluída");
+    }
+  });
+}
+
+/* ============================================================
    IMPORTAR PLANILHA ANTIGA (Google Sheets CSV)
    ============================================================ */
 function campo(row, ...nomes) {
@@ -870,7 +1176,7 @@ function ligarImportacao() {
     const url = $("#csvUrl").value.trim();
     const erro = $("#importErro");
     erro.textContent = "";
-         $("#importPrevia").innerHTML = "";
+    $("#importPrevia").innerHTML = "";
     $("#btnImportar").disabled = true;
     if (!url) return (erro.textContent = "Cole o link CSV da planilha.");
 
