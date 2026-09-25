@@ -7,7 +7,7 @@ const BUCKET = "produtos";
 
 // Ideias de presente — os "id" precisam ser IGUAIS aos do site de vendas
 // (js/script.js → IDEAS). A faixa de preço é automática no site e não aparece aqui.
-const IDEIAS = [
+const IDEIAS_PADRAO = [
   { grupo: "Datas comemorativas", itens: [
     ["dia-das-maes-pais", "Dia das Mães e dos Pais"],
     ["namorados", "Namorados e aniversário de casal"],
@@ -40,7 +40,10 @@ const IDEIAS = [
     ["corporativo", "Corporativo e eventos"]
   ]}
 ];
-const NOME_IDEIA = Object.fromEntries(IDEIAS.flatMap((g) => g.itens));
+// As ideias vêm da tabela "ideias" (aba Ideias). A lista acima só é usada
+// se a tabela ainda não existir no Supabase.
+let IDEIAS = IDEIAS_PADRAO;
+let NOME_IDEIA = Object.fromEntries(IDEIAS.flatMap((g) => g.itens));
 const MAX_LADO_FOTO = 1200;   // px — maior lado da foto enviada
 const QUALIDADE_FOTO = 0.85;
 
@@ -55,6 +58,8 @@ const state = {
   ofertas: [],           // cards do topo do site
   ofertasDisponivel: true,
   ofertaEditando: null,
+  ideias: [],            // ideias de presente cadastradas
+  ideiasDisponivel: true,
   filtroKitIdeia: "",
   kitEditando: null,
   kitFotoNova: null,
@@ -184,6 +189,7 @@ async function iniciar() {
   ligarGaleria();
   ligarKits();
   ligarOfertas();
+  ligarIdeias();
   ligarImportacao();
 
   const { data } = await sb.auth.getSession();
@@ -240,7 +246,8 @@ async function entrarNoPainel() {
 async function carregarTudo() {
   const [cats, prods] = await Promise.all([
     sb.from("categorias").select("*").order("posicao").order("nome"),
-    sb.from("produtos").select("*").order("posicao").order("id")
+    sb.from("produtos").select("*").order("posicao").order("id"),
+    carregarIdeias()
   ]);
   if (cats.error || prods.error) {
     toast(mensagemErro(cats.error || prods.error), true);
@@ -251,6 +258,7 @@ async function carregarTudo() {
   renderProdutos();
   renderCategorias();
   await Promise.all([carregarGaleria(), carregarKits(), carregarOfertas()]);
+  renderIdeias();
 }
 
 async function carregarKits() {
@@ -291,6 +299,7 @@ function ligarAbas() {
       $("#viewGaleria").hidden = v !== "galeria";
       $("#viewKits").hidden = v !== "kits";
       $("#viewOfertas").hidden = v !== "ofertas";
+      $("#viewIdeias").hidden = v !== "ideias";
       $("#viewImportar").hidden = v !== "importar";
       window.scrollTo(0, 0);
     })
@@ -898,6 +907,301 @@ function ligarCategorias() {
 }
 
 /* ============================================================
+   IDEIAS DE PRESENTE — cadastro (aba Ideias)
+   ============================================================ */
+// transforma as linhas da tabela no formato usado nas telas: [{ grupo, itens: [[id, nome], ...] }]
+function montarIdeias() {
+  if (!state.ideiasDisponivel) {
+    IDEIAS = IDEIAS_PADRAO;
+  } else {
+    const grupos = [];
+    state.ideias.forEach((i) => {
+      let g = grupos.find((x) => x.grupo === i.grupo);
+      if (!g) { g = { grupo: i.grupo, itens: [] }; grupos.push(g); }
+      g.itens.push([i.id, i.ativo ? i.nome : `${i.nome} (oculta)`]);
+    });
+    IDEIAS = grupos;
+  }
+  NOME_IDEIA = Object.fromEntries(IDEIAS.flatMap((g) => g.itens));
+}
+
+async function carregarIdeias() {
+  const { data, error } = await sb.from("ideias").select("*").order("posicao").order("nome");
+  state.ideiasDisponivel = !error;
+  state.ideias = error ? [] : data;
+  montarIdeias();
+}
+
+// quantos produtos e kits usam a ideia
+function usoIdeia(id) {
+  const p = state.produtos.filter((x) => (x.tags || []).includes(id)).length;
+  const k = state.kits.filter((x) => (x.ideias || []).includes(id)).length;
+  return { p, k };
+}
+
+function gruposOrdenados() {
+  const grupos = [];
+  state.ideias.forEach((i) => { if (!grupos.includes(i.grupo)) grupos.push(i.grupo); });
+  return grupos;
+}
+
+let sortIdeias = [];
+
+function renderIdeias() {
+  const lista = $("#listaIdeias");
+  const vazio = $("#vazioIdeias");
+  const form = $("#formIdeia");
+  form.hidden = !state.ideiasDisponivel;
+
+  if (!state.ideiasDisponivel) {
+    lista.innerHTML = "";
+    vazio.hidden = false;
+    vazio.innerHTML = `<p>Falta criar a tabela de ideias: rode o arquivo <code>supabase/migracao-ideias-editaveis.sql</code> no SQL Editor do Supabase e recarregue a página.</p><p class="small" style="margin-top:8px">Enquanto isso, o site usa a lista fixa de ideias.</p>`;
+    return;
+  }
+
+  const grupos = gruposOrdenados();
+  const ativas = state.ideias.filter((i) => i.ativo).length;
+  $("#resumoIdeias").textContent = `${state.ideias.length} ideias em ${grupos.length} grupos · ${ativas} no site · as faixas de preço (até R$ 30…) são automáticas`;
+
+  // select de grupo do formulário
+  const sel = $("#ideiaGrupo");
+  const atual = sel.value;
+  sel.innerHTML = grupos.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("") +
+    `<option value="__novo">+ Criar novo grupo…</option>`;
+  sel.value = grupos.includes(atual) || atual === "__novo" ? atual : (grupos[0] || "__novo");
+  $("#ideiaGrupoNovoCampo").hidden = sel.value !== "__novo";
+
+  vazio.hidden = state.ideias.length > 0;
+  if (!state.ideias.length) vazio.innerHTML = `<p>Nenhuma ideia cadastrada. Crie a primeira acima.</p>`;
+
+  lista.innerHTML = grupos.map((g, gi) => {
+    const itens = state.ideias.filter((i) => i.grupo === g);
+    return `
+    <section class="ideia-grupo" data-grupo="${esc(g)}">
+      <div class="ideia-grupo-head">
+        <input type="text" value="${esc(g)}" data-acao="grupo-nome" aria-label="Nome do grupo ${esc(g)}">
+        <span class="g-count">${itens.length} ${itens.length === 1 ? "ideia" : "ideias"}</span>
+        <button type="button" class="icon-btn" data-acao="grupo-subir" aria-label="Subir grupo"${gi === 0 ? " disabled" : ""}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>
+        </button>
+        <button type="button" class="icon-btn" data-acao="grupo-descer" aria-label="Descer grupo"${gi === grupos.length - 1 ? " disabled" : ""}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+      <ul class="cat-list" data-lista-grupo="${esc(g)}">
+        ${itens.map((i) => {
+          const u = usoIdeia(i.id);
+          const uso = [u.p ? `${u.p} ${u.p === 1 ? "produto" : "produtos"}` : "", u.k ? `${u.k} ${u.k === 1 ? "kit" : "kits"}` : ""].filter(Boolean).join(" · ") || "sem produtos";
+          return `
+          <li class="i-row${i.ativo ? "" : " is-off"}" data-id="${esc(i.id)}">
+            <span class="grip" aria-hidden="true">⋮⋮</span>
+            <input class="i-nome" type="text" value="${esc(i.nome)}" data-acao="nome" aria-label="Nome da ideia">
+            <input class="i-dica" type="text" value="${esc(i.dica || "")}" placeholder="Detalhe (opcional)" data-acao="dica" aria-label="Detalhe da ideia">
+            <span class="i-uso">${uso}</span>
+            <button type="button" class="toggle t-ativo${i.ativo ? " on" : ""}" data-acao="ativo" aria-pressed="${i.ativo}" title="${i.ativo ? "Aparece no site — clique para esconder" : "Escondida — clique para mostrar no site"}">${i.ativo ? ICONE_OLHO : ICONE_OLHO_OFF}</button>
+            <button type="button" class="icon-btn danger i-del" data-acao="excluir" aria-label="Excluir ideia ${esc(i.nome)}">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+            </button>
+          </li>`;
+        }).join("")}
+      </ul>
+    </section>`;
+  }).join("");
+
+  sortIdeias.forEach((s) => s.destroy());
+  sortIdeias = $$("#listaIdeias [data-lista-grupo]").map((ul) => new Sortable(ul, {
+    handle: ".grip",
+    animation: 150,
+    ghostClass: "sortable-ghost",
+    onEnd: (evt) => { if (evt.oldIndex !== evt.newIndex) salvarOrdemIdeias(); }
+  }));
+}
+
+// a ordem salva segue a tela: grupo por grupo, ideia por ideia
+async function salvarOrdemIdeias(grupos = null) {
+  const ordemGrupos = grupos || $$("#listaIdeias .ideia-grupo").map((s) => s.dataset.grupo);
+  const ids = [];
+  ordemGrupos.forEach((g) => {
+    const naTela = $$(`#listaIdeias [data-lista-grupo="${CSS.escape(g)}"] .i-row`).map((li) => li.dataset.id);
+    const doGrupo = naTela.length ? naTela : state.ideias.filter((i) => i.grupo === g).map((i) => i.id);
+    ids.push(...doGrupo);
+  });
+  const porId = Object.fromEntries(state.ideias.map((i) => [i.id, i]));
+  state.ideias = ids.map((id, n) => ({ ...porId[id], posicao: n + 1 }));
+  const { error } = await sb.rpc("reordenar_ideias", { ids });
+  if (error) { toast(mensagemErro(error), true); await recarregarIdeias(); return; }
+  aposMudarIdeias();
+  toast("Ordem salva");
+}
+
+async function recarregarIdeias() {
+  await carregarIdeias();
+  aposMudarIdeias();
+}
+
+// as outras telas usam a lista de ideias: atualiza todas
+function aposMudarIdeias() {
+  montarIdeias();
+  renderIdeias();
+  renderProdutos();
+  renderKits();
+  renderOfertas();
+}
+
+async function atualizarIdeia(id, campos) {
+  const { data, error } = await sb.from("ideias").update(campos).eq("id", id).select().single();
+  if (error) throw error;
+  state.ideias = state.ideias.map((i) => (i.id === id ? data : i));
+  return data;
+}
+
+function ligarIdeias() {
+  const form = $("#formIdeia");
+
+  $("#ideiaGrupo").addEventListener("change", (e) => {
+    $("#ideiaGrupoNovoCampo").hidden = e.target.value !== "__novo";
+    if (e.target.value === "__novo") setTimeout(() => form.grupoNovo.focus(), 30);
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const erro = $("#ideiaErro");
+    erro.textContent = "";
+    const nome = form.nome.value.trim();
+    const grupo = form.grupo.value === "__novo" ? form.grupoNovo.value.trim() : form.grupo.value;
+    if (!nome) return (erro.textContent = "Informe o nome da ideia.");
+    if (!grupo) return (erro.textContent = "Informe o nome do novo grupo.");
+
+    // código a partir do nome, sem repetir nenhum existente nem as faixas de preço
+    const reservados = new Set(["ate-30", "30-a-70", "acima-70", ...state.ideias.map((i) => i.id)]);
+    const base = slug(nome) || "ideia";
+    let id = base, n = 2;
+    while (reservados.has(id)) id = `${base}-${n++}`;
+
+    // entra no fim do grupo escolhido
+    const grupos = gruposOrdenados();
+    if (!grupos.includes(grupo)) grupos.push(grupo);
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      const { data, error } = await sb.from("ideias")
+        .insert({ id, nome, dica: form.dica.value.trim(), grupo, posicao: 9999 })
+        .select().single();
+      if (error) throw error;
+      state.ideias.push(data);
+      form.reset();
+      renderIdeias();
+      await salvarOrdemIdeias(grupos);
+      toast(`Ideia “${nome}” criada. Marque os produtos nela pela aba Produtos.`);
+    } catch (err) {
+      erro.textContent = mensagemErro(err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  const lista = $("#listaIdeias");
+
+  lista.addEventListener("keydown", (e) => {
+    if (e.target.matches("input[data-acao]") && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+  });
+
+  // renomear ideia / detalhe / grupo
+  lista.addEventListener("focusout", async (e) => {
+    const input = e.target;
+    const acao = input.dataset && input.dataset.acao;
+    if (!acao) return;
+
+    if (acao === "grupo-nome") {
+      const antigo = input.closest(".ideia-grupo").dataset.grupo;
+      const novo = input.value.trim();
+      if (!novo) { input.value = antigo; return; }
+      if (novo === antigo) return;
+      if (gruposOrdenados().includes(novo)) { input.value = antigo; return toast(`Já existe um grupo “${novo}”.`, true); }
+      const { error } = await sb.from("ideias").update({ grupo: novo }).eq("grupo", antigo);
+      if (error) { input.value = antigo; return toast(mensagemErro(error), true); }
+      state.ideias = state.ideias.map((i) => (i.grupo === antigo ? { ...i, grupo: novo } : i));
+      aposMudarIdeias();
+      return toast("Nome do grupo atualizado");
+    }
+
+    if (acao !== "nome" && acao !== "dica") return;
+    const id = input.closest(".i-row").dataset.id;
+    const ideia = state.ideias.find((i) => i.id === id);
+    const valor = input.value.trim();
+    if (acao === "nome" && !valor) { input.value = ideia.nome; return; }
+    if (valor === (ideia[acao] || "")) return;
+    try {
+      await atualizarIdeia(id, { [acao]: valor });
+      input.classList.add("saved");
+      setTimeout(() => input.classList.remove("saved"), 1200);
+      montarIdeias();
+      renderProdutos(); renderKits(); renderOfertas();
+      toast(acao === "nome" ? "Nome atualizado" : "Detalhe atualizado");
+    } catch (err) {
+      input.value = ideia[acao] || "";
+      toast(mensagemErro(err), true);
+    }
+  });
+
+  lista.addEventListener("click", async (e) => {
+    const alvo = e.target.closest("button[data-acao]");
+    if (!alvo) return;
+    const acao = alvo.dataset.acao;
+
+    if (acao === "grupo-subir" || acao === "grupo-descer") {
+      const grupos = gruposOrdenados();
+      const g = alvo.closest(".ideia-grupo").dataset.grupo;
+      const i = grupos.indexOf(g);
+      const j = acao === "grupo-subir" ? i - 1 : i + 1;
+      if (j < 0 || j >= grupos.length) return;
+      [grupos[i], grupos[j]] = [grupos[j], grupos[i]];
+      return salvarOrdemIdeias(grupos);
+    }
+
+    const id = alvo.closest(".i-row").dataset.id;
+    const ideia = state.ideias.find((i) => i.id === id);
+    if (!ideia) return;
+
+    if (acao === "ativo") {
+      try {
+        await atualizarIdeia(id, { ativo: !ideia.ativo });
+        aposMudarIdeias();
+        toast(!ideia.ativo ? "Ideia visível no site" : "Ideia escondida do site");
+      } catch (err) {
+        toast(mensagemErro(err), true);
+      }
+    }
+
+    if (acao === "excluir") {
+      const u = usoIdeia(id);
+      const usada = u.p || u.k
+        ? ` Ela sai de ${[u.p ? `${u.p} produto(s)` : "", u.k ? `${u.k} kit(s)` : ""].filter(Boolean).join(" e ")}; os produtos continuam no site.`
+        : "";
+      const ok = await confirmar(`Excluir a ideia “${ideia.nome}”?${usada} Se quiser só tirar do site por um tempo, use o botão de visibilidade.`);
+      if (!ok) return;
+      try {
+        // tira a marcação dos produtos e kits
+        for (const p of state.produtos.filter((x) => (x.tags || []).includes(id))) {
+          await atualizarProduto(p.id, { tags: p.tags.filter((t) => t !== id) });
+        }
+        for (const k of state.kits.filter((x) => (x.ideias || []).includes(id))) {
+          await atualizarKit(k.id, { ideias: k.ideias.filter((t) => t !== id) });
+        }
+        const { error } = await sb.from("ideias").delete().eq("id", id);
+        if (error) throw error;
+        state.ideias = state.ideias.filter((i) => i.id !== id);
+        aposMudarIdeias();
+        toast("Ideia excluída");
+      } catch (err) {
+        toast(mensagemErro(err), true);
+      }
+    }
+  });
+}
+
+/* ============================================================
    OFERTAS — cards do topo do site (Hero)
    ============================================================ */
 // Mesmos ícones do site de vendas (js/script.js → OFFER_ICONS)
@@ -922,11 +1226,9 @@ const svgOferta = (id, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATH_ICONE[id] || PATH_ICONE.presente}</svg>`;
 
 // ideias que o card pode abrir (as faixas de preço também existem no site)
-const IDEIAS_OFERTA = [
-  ...IDEIAS,
-  { grupo: "Por faixa de preço", itens: [["ate-30", "Mimos até R$ 30"], ["30-a-70", "Kits de R$ 30 a R$ 70"], ["acima-70", "Presentes especiais (acima de R$ 70)"]] }
-];
-const NOME_IDEIA_OFERTA = Object.fromEntries(IDEIAS_OFERTA.flatMap((g) => g.itens));
+const FAIXAS_PRECO = { grupo: "Por faixa de preço", itens: [["ate-30", "Mimos até R$ 30"], ["30-a-70", "Kits de R$ 30 a R$ 70"], ["acima-70", "Presentes especiais (acima de R$ 70)"]] };
+const ideiasOferta = () => [...IDEIAS, FAIXAS_PRECO];
+const nomeIdeiaOferta = (id) => Object.fromEntries(ideiasOferta().flatMap((g) => g.itens))[id];
 
 let sortOfertas = null;
 
@@ -962,7 +1264,7 @@ function renderOfertas() {
 
   lista.innerHTML = state.ofertas.map((o) => {
     const destino = o.ideia
-      ? `mostra: ${NOME_IDEIA_OFERTA[o.ideia] || o.ideia}`
+      ? `mostra: ${nomeIdeiaOferta(o.ideia) || `${o.ideia} (ideia excluída — o card abre o WhatsApp)`}`
       : "abre o WhatsApp";
     return `
     <li class="p-row${o.ativo ? "" : " is-off"}" data-id="${esc(o.id)}">
@@ -1028,7 +1330,7 @@ function abrirOferta(o) {
     </label>`).join("");
   $("#ofertaIdeia").innerHTML =
     `<option value="">Nenhuma — abrir o WhatsApp</option>` +
-    IDEIAS_OFERTA.map((g) => `<optgroup label="${esc(g.grupo)}">${
+    ideiasOferta().map((g) => `<optgroup label="${esc(g.grupo)}">${
       g.itens.map(([id, nome]) => `<option value="${id}">${esc(nome)}</option>`).join("")
     }</optgroup>`).join("");
   f.ideia.value = o?.ideia || "";

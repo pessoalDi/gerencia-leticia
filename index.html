@@ -99,6 +99,7 @@
       <nav class="tabs" aria-label="Seções">
         <button class="tab active" data-view="produtos">Produtos</button>
         <button class="tab" data-view="categorias">Categorias</button>
+        <button class="tab" data-view="ideias">Ideias</button>
         <button class="tab" data-view="ofertas">Ofertas</button>
         <button class="tab" data-view="kits">Kits</button>
         <button class="tab" data-view="galeria">Galeria</button>
@@ -155,6 +156,45 @@
       </form>
 
       <ul class="cat-list" id="listaCategorias"></ul>
+    </section>
+
+    <!-- ---------- IDEIAS DE PRESENTE ---------- -->
+    <section class="view" id="viewIdeias" hidden>
+      <div class="view-head">
+        <div>
+          <h2>Ideias de presente</h2>
+          <p class="muted" id="resumoIdeias">As ideias da gaveta “Ideias” do site. As faixas de preço (até R$ 30…) são automáticas e não aparecem aqui.</p>
+        </div>
+      </div>
+
+      <form class="panel ideia-nova" id="formIdeia" novalidate>
+        <h3 class="ideia-nova-titulo">Nova ideia</h3>
+        <div class="ideia-nova-campos">
+          <label class="field">
+            <span>Nome</span>
+            <input type="text" name="nome" placeholder="Ex.: Dia dos Avós" maxlength="70" required>
+          </label>
+          <label class="field">
+            <span>Grupo</span>
+            <select name="grupo" id="ideiaGrupo"></select>
+          </label>
+          <label class="field" id="ideiaGrupoNovoCampo" hidden>
+            <span>Nome do novo grupo</span>
+            <input type="text" name="grupoNovo" placeholder="Ex.: Por estação do ano" maxlength="40">
+          </label>
+          <label class="field">
+            <span>Detalhe <small class="muted">(opcional)</small></span>
+            <input type="text" name="dica" placeholder="Ex.: Lembrancinhas e brindes" maxlength="60">
+          </label>
+        </div>
+        <p class="form-error" id="ideiaErro" role="alert"></p>
+        <button class="btn btn-primary" type="submit"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Criar ideia</button>
+      </form>
+
+      <p class="hint">Arraste pela alça <span class="grip-inline" aria-hidden="true">⋮⋮</span> para mudar a ordem dentro do grupo. Nome e detalhe salvam ao sair do campo. Use as setas do grupo para mudar a ordem dos grupos.</p>
+
+      <div id="listaIdeias"></div>
+      <div class="empty" id="vazioIdeias" hidden></div>
     </section>
 
     <!-- ---------- OFERTAS (topo do site) ---------- -->
